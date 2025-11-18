@@ -1,0 +1,285 @@
+population:
+  P1:
+    default: 200
+    verbose_name: "P1 | Численность населения"
+  P2:
+    default: 3300
+    verbose_name: "P2 | Всего продовольствия"
+  P3:
+    default: 3500
+    verbose_name: "P3 | Всего товаров"
+  P4:
+    default: 2
+    verbose_name: "P4 | Продовольствие на душу населения"
+  P5:
+    default: 18
+    verbose_name: "P5 | Уровень смертности"
+  P6:
+    default: 2
+    verbose_name: "P6 | Товары на душу населения"
+  P7:
+    default: 2.25
+    verbose_name: "P7 | Услуги на душу населения"
+  P8:
+    default: 41
+    verbose_name: "P8 | Уровень рождаемости"
+  P9:
+    default: 0
+    verbose_name: "P9 | Продовольствие для населения"
+  P10:
+    default: 0
+    verbose_name: "P10 | Продовольствие на экспорт"
+  P11:
+    default: 0
+    verbose_name: "P11 | Товары для населения"
+  P12:
+    default: 0
+    verbose_name: "P12 | Товары для капиталовложения"
+  P13:
+    default: 0
+    verbose_name: "P13 | Товары на экспорт"
+
+energy:
+  E1:
+    default: 160
+    verbose_name: "E1 | Выбытие капитала для энергии"
+  E2:
+    default: 640
+    verbose_name: "E2 | Новый капитал для энергии"
+  E3:
+    default: 800
+    verbose_name: "E3 | Основной капитал для энергии"
+  E4:
+    default: 0
+    verbose_name: "E4 | Выбытие капитала энергосбережения"
+  E5:
+    default: 0
+    verbose_name: "E5 | Новый капитал энергосбережения"
+  E6:
+    default: 0
+    verbose_name: "E6 | Основной капитал энергосбережения"
+  E7:
+    default: 15000
+    verbose_name: "E7 | Всего энергоресурсов"
+  E8:
+    default: 0.2
+    verbose_name: "E8 | Энергоресурсы на единицу товаров"
+  E9:
+    default: 400
+    verbose_name: "E9 | Энергоресурсы для населения"
+  E10:
+    default: 1.0
+    verbose_name: "E10 | Коэффициент потребления ресурсов"
+  E11:
+    default: 12.5
+    verbose_name: "E11 | Энергоресурсы на единицу с/х капитала"
+  E12:
+    default: 10000
+    verbose_name: "E12 | Потребность в энергии для сельского хозяйства"
+  E13:
+    default: 20
+    verbose_name: "E13 | Энергоресурсы на единицу пром. капитала"
+  E14:
+    default: 6000
+    verbose_name: "E14 | Потребность в энергии для пр-ва товаров"
+  E15:
+    default: 16000
+    verbose_name: "E15 | Потребность в энергии для с/х и пром. пр-ва"
+  E16:
+    default: 17.5
+    verbose_name: "E16 | Генерация энергии на единицу капитала в энергетике"
+  E17:
+    default: 14000
+    verbose_name: "E17 | Пр-во энергоресурсов"
+  E18:
+    default: 0
+    verbose_name: "E18 | Энергоресурсы на экспорт"
+  E19:
+    default: 1000
+    verbose_name: "E19 | Импорт энергоресурсов"
+  E20:
+    default: 0
+    verbose_name: "E20 | Энергоресурсы для населения (1/5 потребл. товаров)"
+  E21:
+    default: 0
+    verbose_name: "E21 | Энергоресурсы на экспорт"
+  E22:
+    default: 0
+    verbose_name: "E22 | Энергоресурсы в резерв"
+  E23:
+    default: 0
+    verbose_name: "E23 | Энергоресурсы для пр-ва товаров и продовольствия"
+  E24:
+    default: 0
+    verbose_name: "E24 | Энергоресурсы для пр-ва продовольствия"
+  E25:
+    default: 0
+    verbose_name: "E25 | Энергоресурсы для пр-ва товаров"
+  E26:
+    default: 0
+    verbose_name: "E26 | Капиталовложения в генерацию энергии"
+  E27:
+    default: 0
+    verbose_name: "E27 | Капиталовложения в энергосбережение"
+
+industry:
+  G1:
+    default: 60
+    verbose_name: "G1 | Выбытие капитала для товаров"
+  G2:
+    default: 240
+    verbose_name: "G2 | Новый капитал для товаров"
+  G3:
+    default: 300
+    verbose_name: "G3 | Основной капитал для товаров"
+  G4:
+    default: 50
+    verbose_name: "G4 | Выбытие капитала сферы услуг"
+  G5:
+    default: 400
+    verbose_name: "G5 | Новый капитал сферы услуг"
+  G6:
+    default: 450
+    verbose_name: "G6 | Основной капитал сферы услуг"
+  G7:
+    default: 6
+    verbose_name: "G7 | Капитал на 1 рабочего"
+  G8:
+    default: 5
+    verbose_name: "G8 | Коэффициент производительности труда"
+  G9:
+    default: 2.25
+    verbose_name: "G9 | Услуги на душу населения"
+  G10:
+    default: 2.13
+    verbose_name: "G10 | Коэффициент производительности труда от услуг"
+  G11:
+    default: 1
+    verbose_name: "G11 | Коэффициент использования капитала"
+  G12:
+    default: 3000
+    verbose_name: "G12 | Фактическое производство товаров"
+  G13:
+    default: 0
+    verbose_name: "G13 | Экспорт товаров (п.п.)"
+  G14:
+    default: 500
+    verbose_name: "G14 | Импорт товаров (п.п.)"
+  G15:
+    default: 3100
+    verbose_name: "G15 | Плановое производство товаров (т.п.)"
+  G16:
+    default: 3500
+    verbose_name: "G16 | Всего товаров (п.п.)"
+  G17:
+    default: 430
+    verbose_name: "G17 | Выбытие капитала во всех секторах экономики (к концу периода)"
+  G18:
+    default: 0
+    verbose_name: "G18 | Капиталовложения в производство товаров"
+  G19:
+    default: 0
+    verbose_name: "G19 | Капиталовложения в сферу услуг"
+
+agriculture:
+  F1:
+    default: 160
+    verbose_name: "F1 | Выбытие капитала"
+  F2:
+    default: 640
+    verbose_name: "F2 | Новый капитал"
+  F3:
+    default: 800
+    verbose_name: "F3 | Основной капитал"
+  F4:
+    default: 0
+    verbose_name: "F4 | Выбытие природоохранного капитала"
+  F5:
+    default: 0
+    verbose_name: "F5 | Новый природоохранный капитал"
+  F6:
+    default: 0
+    verbose_name: "F6 | Основной природоохранный капитал"
+  F7:
+    default: 0.69
+    verbose_name: "F7 | Состояние окружающей среды"
+  F8:
+    default: 0.8
+    verbose_name: "F8 | Отношение капитала с/х к площади угодий"
+  F9:
+    default: 3450
+    verbose_name: "F9 | Плановое производство продовольствия"
+  F10:
+    default: 1
+    verbose_name: "F10 | Коэффициент использования с/х капитала"
+  F11:
+    default: 3300
+    verbose_name: "F11 | Производство продовольствия"
+  F12:
+    default: 1550
+    verbose_name: "F12 | Экспорт продовольствия (п.п.)"
+  F13:
+    default: 0
+    verbose_name: "F13 | Импорт продовольствия (п.п.)"
+  F14:
+    default: 0
+    verbose_name: "F14 | Капиталовложения в производство продовольствия"
+  F15:
+    default: 0
+    verbose_name: "F15 | Капиталовложения в защиту окружающей среды"
+
+trade:
+  TF1:
+    default: 0
+    verbose_name: "TF1 | Внешний долг"
+  TF2:
+    default: 10
+    verbose_name: "TF2 | Процентная ставка"
+  TF3:
+    default: 1
+    verbose_name: "TF3 | Коэффициент девальвации"
+  TF4:
+    default: 0
+    verbose_name: "TF4 | Проценты за кредит"
+  TF5:
+    default: 1000
+    verbose_name: "TF5 | Максимально возможный кредит"
+  TF6:
+    default: 1
+    verbose_name: "TF6 | Цена на импорт энергии"
+  TF7:
+    default: 1.1
+    verbose_name: "TF7 | Цена на импорт товаров"
+  TF8:
+    default: 1.1
+    verbose_name: "TF8 | Цена на импорт продовольствия"
+  TF9:
+    default: 0
+    verbose_name: "TF9 | Иностранная помощь"
+  TF10:
+    default: 0
+    verbose_name: "TF10 | Энергия на экспорт"
+  TF11:
+    default: 0
+    verbose_name: "TF11 | Товары на экспорт"
+  TF12:
+    default: 0
+    verbose_name: "TF12 | Продовольствие на экспорт"
+  TF13:
+    default: 0
+    verbose_name: "TF13 | Новый кредит"
+  TF14:
+    default: 0
+    verbose_name: "TF14 | Выплаты по долгу"
+  TF15:
+    default: 0
+    verbose_name: "TF15 | Валюта для импорта, суммарно"
+  TF16:
+    default: 0
+    verbose_name: "TF16 | Валюта для импорта энергии"
+  TF17:
+    default: 0
+    verbose_name: "TF17 | Валюта для импорта товаров"
+  TF18:
+    default: 0
+    verbose_name: "TF18 | Валюта для импорта продовольствия"
