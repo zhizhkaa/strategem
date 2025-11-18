@@ -1,4 +1,4 @@
-.PHONY: install check-venv run migrate migrations help
+.PHONY: install check-venv run migrate migrations help test
 
 install:
 	@if [ ! -d ".venv" ]; then \
@@ -30,8 +30,7 @@ migrations: check-venv
 shell: check-venv
 	.venv/bin/python backend/manage.py shell
 
-test: check-venv
-	.venv/bin/python backend/manage.py test
+
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +
@@ -41,11 +40,10 @@ clean:
 
 help:
 	@echo "Доступные команды:"
-	@echo "  make help         - Показать это сообщение"
-	@echo "  make install      - Установить зависимости"
-	@echo "  make run          - Запустить dev сервер"
-	@echo "  make migrate      - Применить миграции"
-	@echo "  make migrations   - Создать миграции"
-	@echo "  make shell        - Открыть Django shell"
-	@echo "  make test         - Запустить тесты"
-	@echo "  make clean        - Очистить кеш и временные файлы"
+	@echo "  make help          - Показать это сообщение"
+	@echo "  make install       - Установить зависимости"
+	@echo "  make run           - Запустить dev сервер"
+	@echo "  make migrate       - Применить миграции"
+	@echo "  make migrations    - Создать миграции"
+	@echo "  make shell         - Открыть Django shell"
+	@echo "  make clean         - Очистить кеш и временные файлы"
