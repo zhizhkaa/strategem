@@ -1,0 +1,705 @@
+{% extends "base.html" %}
+{% block title %}Стратегема — Калькулятор{% endblock %}
+
+{% block nav_items %}
+<span class="text-strategem-200 text-sm">Калькулятор</span>
+<a href="/admin-panel/" class="hover:bg-strategem-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">Панель</a>
+<a href="/" class="hover:bg-strategem-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">Главная</a>
+{% endblock %}
+
+{% block content %}
+<div x-data="calculatorApp()" x-init="init()" x-cloak>
+
+    <!-- Заголовок: выбор игры и кнопки -->
+    <div class="mb-4 flex items-center gap-4 flex-wrap">
+        <select x-model="gameId" @change="loadState()"
+            class="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-strategem-500">
+            <option value="">Выберите игру...</option>
+            <template x-for="g in games" :key="g.id">
+                <option :value="g.id" x-text="g.team_name || `Игра #${g.id}`"></option>
+            </template>
+        </select>
+        <span x-show="gameId" class="text-sm text-gray-600">
+            Период: <strong x-text="currentPeriod"></strong>
+        </span>
+        <div class="ml-auto flex gap-2">
+            <button @click="resetGame()" x-show="gameId"
+                class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded text-sm">Сбросить</button>
+            <button @click="calculate()" x-show="gameId && canInput" :disabled="submitting"
+                class="bg-strategem-600 hover:bg-strategem-700 text-white px-4 py-2 rounded text-sm disabled:opacity-50">
+                <span x-text="submitting ? 'Расчёт...' : 'Рассчитать период'"></span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Таблицы интерполяции (сворачиваемая секция наверху) -->
+    <details x-show="!loading && periods.length > 0" class="mb-4 border border-gray-200 rounded-lg bg-white">
+        <summary class="px-4 py-2 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50 select-none">
+            Таблицы интерполяции
+        </summary>
+        <div class="p-4 border-t border-gray-200">
+            <select x-model="interpTableName" @change="interpCalcX = null; interpCalcResult = null; if(interpChart){interpChart.destroy();interpChart=null;} $nextTick(() => renderInterpChart())"
+                class="border border-gray-300 rounded px-3 py-1.5 text-sm mb-4">
+                <option value="">Выберите таблицу...</option>
+                <template x-for="name in Object.keys(interpolationTables).sort()" :key="name">
+                    <option :value="name" x-text="name + ' — ' + (interpolationTables[name].description || '')"></option>
+                </template>
+            </select>
+            <div x-show="interpTableName" class="max-w-2xl">
+                <canvas id="interpChart"></canvas>
+                <!-- Поле ввода X под графиком слева -->
+                <div class="flex items-center gap-2 mt-3">
+                    <label class="text-xs text-gray-500 font-medium">X =</label>
+                    <input type="text" inputmode="decimal"
+                        @input="onInterpInput($el.value)"
+                        class="w-24 border border-gray-300 rounded px-2 py-1 text-sm"
+                        placeholder="0.0">
+                    <span x-show="interpCalcResult !== null" class="text-sm">
+                        <span class="text-gray-400">→</span>
+                        <span class="font-bold text-strategem-700" x-text="'Y = ' + interpCalcResult"></span>
+                    </span>
+                </div>
+            </div>
+        </div>
+    </details>
+
+    <!-- Загрузка -->
+    <div x-show="loading" class="text-center py-12">
+        <div class="inline-block w-8 h-8 border-4 border-strategem-500 border-t-transparent rounded-full animate-spin"></div>
+    </div>
+
+    <!-- Пустое состояние -->
+    <div x-show="!loading && !gameId" class="text-center py-20 text-gray-400">
+        <p class="text-lg font-medium">Выберите игру для начала работы</p>
+    </div>
+
+    <!-- Основная таблица -->
+    <div x-show="!loading && periods.length > 0" class="border border-gray-200 rounded-lg shadow-sm"
+         style="overflow-x: auto; max-width: 100%;">
+        <table class="text-sm border-collapse calc-table" style="min-width: max-content;">
+            <thead class="bg-gray-100 border-b border-gray-200">
+                <tr>
+                    <th class="sticky left-0 z-20 bg-gray-100 px-2 py-2 text-left text-xs font-medium text-gray-700 border-r border-gray-200"
+                        style="min-width:50px;">Код</th>
+                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-700" style="min-width:130px;">Параметр</th>
+                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-700 bg-gray-50" style="min-width:180px;max-width:320px;">Формула</th>
+                    <template x-for="p in periods" :key="'h'+p.period_number">
+                        <th class="px-2 py-2 text-center text-xs font-medium text-gray-700"
+                            style="min-width:100px;"
+                            x-text="'К' + p.period_number"></th>
+                    </template>
+                    <th x-show="canInput" class="px-2 py-2 text-center text-xs font-medium text-gray-700 bg-yellow-100" style="min-width:100px;">Ввод</th>
+                </tr>
+            </thead>
+            <tbody x-html="buildTableBody()"></tbody>
+        </table>
+    </div>
+
+    <!-- Модалка: график параметра -->
+    <div x-show="selectedParam" x-transition
+        class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
+        @click.self="closeParamChart()">
+        <div class="bg-white rounded-xl shadow-2xl p-6 max-w-2xl w-full">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold">
+                    <span class="font-mono text-strategem-600" x-text="selectedParam"></span>
+                    — <span class="font-normal text-gray-600" x-text="getParamName(selectedParam)"></span>
+                </h3>
+                <button @click="closeParamChart()" class="text-gray-400 hover:text-gray-700 text-2xl">&times;</button>
+            </div>
+            <canvas id="paramHistoryChart"></canvas>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    details[open] > summary svg { transform: rotate(180deg) !important; }
+    details > summary::-webkit-details-marker { display: none; }
+    .calc-table td, .calc-table th { border: 1px solid #e5e7eb; }
+</style>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function calculatorApp() {
+    return {
+        games: [],
+        gameId: null,
+        periods: [],
+        currentPeriod: 0,
+        inputValues: {},
+        paramConfig: {},
+        inputParams: [],
+        interpolationTables: {},
+
+        selectedParam: null,
+        historyChart: null,
+
+        interpTableName: '',
+        interpChart: null,
+        interpCalcX: null,
+        interpCalcResult: null,
+
+        loading: false,
+        submitting: false,
+        missingFields: [],
+
+        paramGroups: [
+            { name: 'Население', color: '#0c4a6e', params: ['P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','P11','P12','P13'] },
+            { name: 'Энергетика', color: '#065f46', params: ['E1','E2','E3','E4','E5','E6','E7','E8','E9','E10','E11','E12','E13','E14','E15','E16','E17','E18','E19','E20','E21','E22','E23','E24','E25','E26','E27'] },
+            { name: 'Среда и производство', color: '#713f12', params: ['G1','G2','G3','G4','G5','G6','G7','G8','G9','G10','G11','G12','G13','G14','G15','G16','G17','G18','G19'] },
+            { name: 'Финансы', color: '#7c2d12', params: ['F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12','F13','F14','F15'] },
+            { name: 'Торговля и финансы', color: '#581c87', params: ['TF1','TF2','TF3','TF4','TF5','TF6','TF7','TF8','TF9','TF10','TF11','TF12','TF13','TF14','TF15','TF16','TF17','TF18'] },
+        ],
+
+        inputRequired: ['P9','P10','P11','P12','P13','E20','E21','E22','E23','E24','E25','E26','E27','G18','G19','F14','F15','TF9','TF10','TF11','TF12','TF13','TF14','TF15','TF16','TF17','TF18'],
+
+        async init() {
+            this.setupTableListeners();
+            await this.loadGames();
+            // Восстановить последнюю открытую игру
+            const saved = localStorage.getItem('calculatorGameId');
+            if (saved && this.games.some(g => String(g.id) === saved)) {
+                this.gameId = saved;
+                await this.loadState();
+            }
+        },
+
+        async loadGames() {
+            try {
+                const data = await API.get('/games/');
+                this.games = Array.isArray(data) ? data : (data.results || []);
+            } catch (e) { showToast('Ошибка загрузки игр: ' + e.message, 'error'); }
+        },
+
+        async loadState() {
+            if (!this.gameId) return;
+            localStorage.setItem('calculatorGameId', this.gameId);
+            this.loading = true;
+            try {
+                const data = await API.get(`/admin/calculator/${this.gameId}/state/`);
+                this.periods = data.periods || [];
+                this.currentPeriod = data.current_period || 0;
+                this.interpolationTables = data.interpolation_tables || {};
+                this.inputParams = data.input_params || [];
+                this.paramConfig = data.param_config || {};
+                this.inputValues = {};
+                this.missingFields = [];
+            } catch (e) { showToast('Ошибка: ' + e.message, 'error'); }
+            finally { this.loading = false; }
+        },
+
+        async calculate() {
+            const required = ['P9', 'P10', 'P11','P12','P13','E20','E21','E22','E23','E24','E25','E26','E27','G18','G19','F14','F15','TF9','TF10','TF11','TF12','TF13','TF14','TF15','TF16','TF17','TF18'];
+            this.missingFields = required.filter(p => this.inputValues[p] === undefined || this.inputValues[p] === null || this.inputValues[p] === '');
+            if (this.missingFields.length > 0) { showToast('Заполните обязательные поля', 'warning'); return; }
+            this.submitting = true;
+            try {
+                await API.post(`/admin/calculator/${this.gameId}/calculate/`, { parameters: this.inputValues });
+                showToast('Период рассчитан', 'success');
+                await this.loadState();
+            } catch (e) { showToast('Ошибка: ' + e.message, 'error'); }
+            finally { this.submitting = false; }
+        },
+
+        async resetGame() {
+            if (!confirm('Сбросить игру?')) return;
+            try {
+                await API.post(`/admin/calculator/${this.gameId}/reset/`);
+                showToast('Игра сброшена', 'success');
+                await this.loadState();
+            } catch (e) { showToast('Ошибка: ' + e.message, 'error'); }
+        },
+
+
+
+
+        isInput(p) { return this.inputRequired.includes(p) || this.inputParams.includes(p); },
+
+        getParamName(p) {
+            const c = this.paramConfig[p];
+            return c && typeof c === 'object' ? (c.verbose_name || p) : p;
+        },
+
+        getLastFormula(param) {
+            for (let i = this.periods.length - 1; i >= 0; i--) {
+                const f = this.periods[i]?.formulas?.[param]?.formula;
+                if (f) return f;
+            }
+            return '';
+        },
+
+        formatValue(val) {
+            if (val === '' || val === null || val === undefined) return '';
+            return typeof val === 'number' ? parseFloat(val.toFixed(2)) : val;
+        },
+
+        // Можно ли ещё вводить данные (периоды 0..10 = 11 записей = игра окончена)
+        get canInput() {
+            return this.currentPeriod < 10;
+        },
+
+        // Генерация тела таблицы через innerHTML (обход проблем с template внутри tr)
+        buildTableBody() {
+            const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+            let html = '';
+            const nPeriods = this.periods.length;
+            const showInput = this.canInput;
+            const totalCols = 3 + nPeriods + (showInput ? 1 : 0);
+
+            for (const group of this.paramGroups) {
+                // Заголовок группы
+                html += `<tr class="border-t-2" style="border-color:${group.color}20; background:${group.color}08;">`;
+                html += `<td class="sticky left-0 z-10 px-2 py-1 border-r border-gray-200" style="background:${group.color}08;"></td>`;
+                html += `<td colspan="${totalCols - 1}" class="px-2 py-1 text-xs font-bold uppercase tracking-wide" style="color:${group.color}">${esc(group.name)}</td>`;
+                html += `</tr>`;
+
+                for (const param of group.params) {
+                    const isInp = this.isInput(param);
+                    const rowBg = isInp ? 'background:#fefce8;' : '';
+                    const stickyBg = isInp ? 'background:#fefce8;' : 'background:#fff;';
+                    html += `<tr style="${rowBg}" class="border-t border-gray-100 hover:opacity-90">`;
+
+                    // Код
+                    html += `<td class="sticky left-0 z-10 px-2 py-1 font-mono text-xs cursor-pointer border-r border-gray-200 hover:text-sky-600" style="${stickyBg}" onclick="document.dispatchEvent(new CustomEvent('show-param-chart',{detail:'${param}'}))">${param}</td>`;
+
+                    // Название
+                    html += `<td class="px-2 py-1 text-gray-600 text-xs">${esc(this.getParamName(param))}</td>`;
+
+                    // Формула (сокращаем interpolate → interp)
+                    const formula = this.getLastFormula(param);
+                    const formulaShort = formula ? formula.replace(/interpolate/g, 'interp') : '';
+                    html += `<td class="px-2 py-1 text-xs font-mono text-gray-500 bg-gray-50" style="max-width:400px;word-break:break-all;">${esc(formulaShort || '—')}</td>`;
+
+                    // Значения периодов
+                    for (let i = 0; i < nPeriods; i++) {
+                        const p = this.periods[i];
+                        const pn = p.period_number;
+                        const val = p?.params?.[param];
+                        const formulaObj = p?.formulas?.[param];
+                        const sub = formulaObj?.substituted || '';
+                        const rawFormula = formulaObj?.formula || '';
+                        const displayVal = this.formatValue(val);
+                        const isDecision = formulaObj?.is_decision || false;
+                        // Проверка: вычисляем подстановку и сравниваем с результатом
+                        // Пропускаем: период 0, decisions, interp/mean, значения 0, prev
+                        let mismatch = false;
+                        if (pn > 0 && sub && !isDecision
+                            && val !== null && val !== undefined && val !== 0
+                            && !/interp|interpolate|mean|prev/.test(rawFormula)) {
+                            try {
+                                const computed = Function('"use strict"; return (' + sub + ')')();
+                                if (typeof computed === 'number' && isFinite(computed)) {
+                                    const diff = Math.abs(computed - val);
+                                    mismatch = diff > 10 && diff > Math.abs(val) * 0.1;
+                                }
+                            } catch(e) {}
+                        }
+                        const cellStyle = mismatch ? 'background:#fef2f2;outline:2px solid #f87171;outline-offset:-1px;' : '';
+                        html += `<td class="px-2 py-0.5 text-center text-xs tabular-nums" data-cell="${param}-${pn}" style="${cellStyle}">`;
+                        html += `<div class="font-medium">${displayVal !== '' ? displayVal : ''}</div>`;
+                        if (sub) {
+                            html += `<details class="mt-0.5" data-formula="${esc(rawFormula)}" data-param="${param}" data-period="${pn}">`;
+                            html += `<summary class="cursor-pointer select-none flex items-center justify-end" style="list-style:none;min-height:20px;"><svg class="transition-transform" style="width:16px;height:16px;color:#6b7280;" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg></summary>`;
+                            html += `<div class="formula-sub text-gray-500 font-mono text-left whitespace-nowrap" style="font-size:10px;">${esc(sub.replace(/interpolate/g, 'interp'))}</div></details>`;
+                        }
+                        html += `</td>`;
+                    }
+
+                    // Ввод (только если игра не завершена)
+                    if (showInput) {
+                        html += `<td class="px-2 py-1 text-center" style="background:#fefce8;">`;
+                        if (isInp) {
+                            const isMissing = this.missingFields.includes(param);
+                            const border = isMissing ? 'border-color:#f87171;box-shadow:0 0 0 1px #f87171;' : '';
+                            const curVal = this.inputValues[param] !== undefined && this.inputValues[param] !== null ? this.inputValues[param] : '';
+                            html += `<input type="number" step="any" value="${curVal}" style="${border}" class="w-full border border-gray-300 rounded px-2 py-1 text-xs text-center" data-param="${param}" onchange="document.dispatchEvent(new CustomEvent('calc-input',{detail:{param:'${param}',value:this.value}}))"/>`;
+                        } else {
+                            html += `<span class="text-gray-300 text-xs">—</span>`;
+                        }
+                        html += `</td>`;
+                    }
+                    html += `</tr>`;
+                }
+            }
+            return html;
+        },
+
+        // Палитра цветов для подсветки ссылок в формулах
+        highlightColors: [
+            { bg: '#dbeafe', border: '#3b82f6', text: '#1d4ed8' },  // синий
+            { bg: '#dcfce7', border: '#22c55e', text: '#15803d' },  // зелёный
+            { bg: '#fef3c7', border: '#f59e0b', text: '#b45309' },  // жёлтый
+            { bg: '#fce7f3', border: '#ec4899', text: '#be185d' },  // розовый
+            { bg: '#e0e7ff', border: '#6366f1', text: '#4338ca' },  // индиго
+            { bg: '#ffedd5', border: '#f97316', text: '#c2410c' },  // оранжевый
+            { bg: '#d1fae5', border: '#10b981', text: '#047857' },  // изумрудный
+            { bg: '#ede9fe', border: '#8b5cf6', text: '#6d28d9' },  // фиолетовый
+        ],
+
+        // Парсит формулу и возвращает массив ссылок { param, periodOffset }
+        // periodOffset: 0 = текущий период, -1 = предыдущий (prev)
+        parseFormulaRefs(formula) {
+            const refs = [];
+            const seen = new Set();
+
+            // prev(PARAM) → предыдущий период
+            const prevRe = /prev\s*\(\s*([A-Z][A-Z0-9]*)\s*\)/g;
+            let m;
+            while ((m = prevRe.exec(formula)) !== null) {
+                const key = m[1] + ':-1';
+                if (!seen.has(key)) { seen.add(key); refs.push({ param: m[1], offset: -1 }); }
+            }
+
+            // mean(PARAM, N) → предыдущий период (упрощённо показываем один)
+            const meanRe = /mean\s*\(\s*([A-Z][A-Z0-9]*)\s*,\s*\d+\s*\)/g;
+            while ((m = meanRe.exec(formula)) !== null) {
+                const key = m[1] + ':-1';
+                if (!seen.has(key)) { seen.add(key); refs.push({ param: m[1], offset: -1 }); }
+            }
+
+            // Обычные параметры (не внутри prev/mean/interpolate)
+            // Сначала убираем prev(...), mean(...), interpolate(TABLE, ...) чтобы не дублировать
+            let cleaned = formula
+                .replace(/prev\s*\(\s*[A-Z][A-Z0-9]*\s*\)/g, '')
+                .replace(/mean\s*\(\s*[A-Z][A-Z0-9]*\s*,\s*\d+\s*\)/g, '')
+                .replace(/interpolate\s*\(\s*[A-Z][A-Z0-9]*\s*,/g, '');
+            const paramRe = /\b([A-Z][A-Z0-9]*)\b/g;
+            while ((m = paramRe.exec(cleaned)) !== null) {
+                // Исключаем функции и числовые константы
+                if (['TABLE'].includes(m[1])) continue;
+                const key = m[1] + ':0';
+                if (!seen.has(key)) { seen.add(key); refs.push({ param: m[1], offset: 0 }); }
+            }
+
+            return refs;
+        },
+
+        // Текущий открытый details (для закрытия при открытии другого)
+        _openDetails: null,
+
+        // Подсвечивает ячейки-источники и числа в подстановке
+        highlightRefs(detailsEl) {
+            const formulaStr = detailsEl.dataset.formula;
+            const currentPeriod = parseInt(detailsEl.dataset.period);
+            const paramName = detailsEl.dataset.param;
+            const refs = this.parseFormulaRefs(formulaStr);
+            const subDiv = detailsEl.querySelector('.formula-sub');
+
+            // Для каждой ссылки: найти значение из данных периода и подсветить ячейку
+            const refValues = []; // [{pattern, value, color}]
+
+            refs.forEach((ref, idx) => {
+                const color = this.highlightColors[idx % this.highlightColors.length];
+                const targetPeriodNum = currentPeriod + ref.offset;
+                if (targetPeriodNum < 0) return;
+
+                // Найти период по номеру
+                const targetPeriod = this.periods.find(p => p.period_number === targetPeriodNum);
+                if (!targetPeriod) return;
+
+                const val = targetPeriod.params?.[ref.param];
+                if (val === undefined || val === null) return;
+
+                // Подсветить ячейку
+                const cellId = `${ref.param}-${targetPeriodNum}`;
+                const cell = document.querySelector(`[data-cell="${cellId}"]`);
+                if (cell) {
+                    cell.style.backgroundColor = color.bg;
+                    cell.style.outline = `2px solid ${color.border}`;
+                    cell.style.outlineOffset = '-1px';
+                    cell.style.zIndex = '5';
+                    cell.style.position = 'relative';
+                    cell.dataset.highlighted = '1';
+                }
+
+                // Форматируем значение как в подстановке (целое или с дробной частью)
+                const formatted = val === Math.floor(val) ? String(Math.round(val)) : String(parseFloat(val.toFixed(2)));
+                refValues.push({ param: ref.param, offset: ref.offset, value: formatted, color });
+            });
+
+            // Раскрашиваем подстановку: берём оригинальную формулу и заменяем имена параметров на цветные значения
+            if (subDiv && refValues.length > 0) {
+                let coloredFormula = formulaStr.replace(/interpolate/g, 'interp');
+
+                // 1) Заменяем prev(PARAM) на цветной span с значением
+                for (const rv of refValues) {
+                    if (rv.offset !== -1) continue;
+                    const re = new RegExp(`prev\\s*\\(\\s*${rv.param}\\s*\\)`, 'g');
+                    coloredFormula = coloredFormula.replace(re,
+                        `<span style="color:${rv.color.text};font-weight:700;background:${rv.color.bg};padding:0 2px;border-radius:2px;">${rv.value}</span>`);
+                }
+
+                // 2) Заменяем mean(PARAM, N) на цветной span
+                for (const rv of refValues) {
+                    if (rv.offset !== -1) continue;
+                    const re = new RegExp(`mean\\s*\\(\\s*${rv.param}\\s*,\\s*\\d+\\s*\\)`, 'g');
+                    coloredFormula = coloredFormula.replace(re,
+                        `<span style="color:${rv.color.text};font-weight:700;background:${rv.color.bg};padding:0 2px;border-radius:2px;">${rv.value}</span>`);
+                }
+
+                // 3) Заменяем обычные параметры (текущий период, offset=0)
+                // Сортируем по длине имени (длинные первые: TF17 до TF1)
+                const currentRefs = refValues.filter(rv => rv.offset === 0).sort((a, b) => b.param.length - a.param.length);
+                for (const rv of currentRefs) {
+                    const re = new RegExp(`\\b${rv.param}\\b`, 'g');
+                    coloredFormula = coloredFormula.replace(re,
+                        `<span style="color:${rv.color.text};font-weight:700;background:${rv.color.bg};padding:0 2px;border-radius:2px;">${rv.value}</span>`);
+                }
+
+                // 4) Если формула содержит interpolate/interp — добавляем строку с вычисленными значениями
+                if (/interp(olate)?\s*\(/.test(formulaStr)) {
+                    let resolvedLine = coloredFormula;
+                    // Ищем interp(...) с балансировкой скобок
+                    const interpPositions = [];
+                    const interpRe = /interp(?:olate)?\s*\(/g;
+                    let im;
+                    while ((im = interpRe.exec(resolvedLine)) !== null) {
+                        // Находим закрывающую скобку с учётом вложенности
+                        let depth = 1, pos = im.index + im[0].length;
+                        while (pos < resolvedLine.length && depth > 0) {
+                            if (resolvedLine[pos] === '(') depth++;
+                            else if (resolvedLine[pos] === ')') depth--;
+                            pos++;
+                        }
+                        if (depth === 0) {
+                            interpPositions.push({ start: im.index, end: pos, inner: resolvedLine.slice(im.index + im[0].length, pos - 1) });
+                        }
+                    }
+                    // Заменяем с конца чтобы не сбивать индексы
+                    for (let ip = interpPositions.length - 1; ip >= 0; ip--) {
+                        const { start, end, inner } = interpPositions[ip];
+                        // inner = "TABLE, expr" — разделяем по первой запятой
+                        const commaIdx = inner.indexOf(',');
+                        if (commaIdx < 0) continue;
+                        const table = inner.slice(0, commaIdx).replace(/<[^>]*>/g, '').trim();
+                        const exprHtml = inner.slice(commaIdx + 1).trim();
+                        // Убираем HTML теги, вычисляем выражение
+                        const exprClean = exprHtml.replace(/<[^>]*>/g, '').trim();
+                        try {
+                            const xVal = Function('"use strict"; return (' + exprClean + ')')();
+                            if (typeof xVal === 'number' && isFinite(xVal) && this.interpolationTables[table]) {
+                                const result = this.interpolateValue(table, xVal);
+                                const span = `<span style="color:#7c3aed;font-weight:700;text-decoration:underline;text-decoration-style:dotted;">${result}</span>`;
+                                resolvedLine = resolvedLine.slice(0, start) + span + resolvedLine.slice(end);
+                            }
+                        } catch(e) { /* выражение не вычисляется — оставляем как есть */ }
+                    }
+                    if (resolvedLine !== coloredFormula) {
+                        coloredFormula += `<div style="margin-top:2px;border-top:1px dashed #d1d5db;padding-top:2px;">= ${resolvedLine}</div>`;
+                    }
+                }
+
+                subDiv.innerHTML = coloredFormula;
+            }
+        },
+
+        // Интерполяция по таблице (чистая функция, без побочных эффектов)
+        interpolateValue(tableName, x) {
+            const td = this.interpolationTables[tableName];
+            if (!td) return '?';
+            const xs = td.x, ys = td.y;
+            if (x <= xs[0]) return parseFloat(ys[0].toFixed(4));
+            if (x >= xs[xs.length-1]) return parseFloat(ys[ys.length-1].toFixed(4));
+            for (let i = 0; i < xs.length - 1; i++) {
+                if (x >= xs[i] && x <= xs[i+1]) {
+                    const t = (x - xs[i]) / (xs[i+1] - xs[i]);
+                    return parseFloat((ys[i] + t * (ys[i+1] - ys[i])).toFixed(4));
+                }
+            }
+            return parseFloat(ys[ys.length-1].toFixed(4));
+        },
+
+        // Убирает все подсветки
+        clearHighlights() {
+            document.querySelectorAll('[data-highlighted="1"]').forEach(el => {
+                el.style.backgroundColor = '';
+                el.style.outline = '';
+                el.style.outlineOffset = '';
+                el.style.zIndex = '';
+                el.style.position = '';
+                delete el.dataset.highlighted;
+            });
+        },
+
+        // Слушатели кастомных событий из buildTableBody
+        setupTableListeners() {
+            document.addEventListener('show-param-chart', (e) => {
+                this.showParamChart(e.detail);
+            });
+            document.addEventListener('calc-input', (e) => {
+                const { param, value } = e.detail;
+                this.inputValues[param] = value === '' ? null : parseFloat(value);
+            });
+
+            // Слушатель toggle на details для подсветки формул
+            document.addEventListener('toggle', (e) => {
+                if (e.target.tagName !== 'DETAILS' || !e.target.dataset.formula) return;
+
+                if (e.target.open) {
+                    // Закрыть предыдущий открытый details
+                    if (this._openDetails && this._openDetails !== e.target && this._openDetails.open) {
+                        this._openDetails.open = false;
+                    }
+                    this.clearHighlights();
+                    this._openDetails = e.target;
+                    this.highlightRefs(e.target);
+                } else {
+                    this.clearHighlights();
+                    if (this._openDetails === e.target) this._openDetails = null;
+                }
+            }, true);
+        },
+
+        showParamChart(param) {
+            this.destroyHistoryChart();
+            this.selectedParam = param;
+            this.$nextTick(() => this.renderHistoryChart(param));
+        },
+
+        closeParamChart() {
+            this.selectedParam = null;
+            this.destroyHistoryChart();
+        },
+
+        linearTrend(values) {
+            const n = values.length;
+            if (n < 2) return values;
+            let sx=0,sy=0,sxx=0,sxy=0;
+            for (let i=0;i<n;i++){sx+=i;sy+=values[i];sxx+=i*i;sxy+=i*values[i];}
+            const slope=(n*sxy-sx*sy)/(n*sxx-sx*sx);
+            const intercept=(sy-slope*sx)/n;
+            return values.map((_,i)=>parseFloat((intercept+slope*i).toFixed(2)));
+        },
+
+        renderHistoryChart(param) {
+            const canvas = document.getElementById('paramHistoryChart');
+            if (!canvas) return;
+            const labels = this.periods.map(p => 'К' + p.period_number);
+            const values = this.periods.map(p => p.params?.[param] ?? null);
+            const valid = values.filter(v => v !== null);
+            const trend = this.linearTrend(valid);
+            let trendData=[],ti=0;
+            for (const v of values) trendData.push(v!==null?trend[ti++]:null);
+
+            this.historyChart = new Chart(canvas, {
+                type:'line',
+                data:{labels,datasets:[
+                    {label:param,data:values,borderColor:'#0ea5e9',backgroundColor:'rgba(14,165,233,0.1)',fill:true,tension:0.3,pointRadius:5},
+                    {label:'Тренд',data:trendData,borderColor:'#f97316',borderDash:[6,3],borderWidth:2,pointRadius:0,fill:false}
+                ]},
+                options:{responsive:true,plugins:{legend:{position:'bottom'}},scales:{x:{title:{display:true,text:'Период'}},y:{title:{display:true,text:'Значение'}}}}
+            });
+        },
+
+        destroyHistoryChart() {
+            if (this.historyChart){this.historyChart.destroy();this.historyChart=null;}
+        },
+
+        onInterpInput(rawValue) {
+            const cleaned = rawValue.replace(',', '.');
+            const num = parseFloat(cleaned);
+            this.interpCalcX = isFinite(num) ? num : null;
+            this.calcInterpolation();
+            if (!this.interpChart || this.interpChart.data.datasets.length < 2) return;
+            const hasPoint = this.interpCalcResult !== null && this.interpCalcX !== null;
+            this.interpChart.data.datasets[1].data = hasPoint
+                ? [{ x: this.interpCalcX, y: this.interpCalcResult }] : [];
+            this.interpChart.update();
+        },
+
+        // Линейная интерполяция по таблице на клиенте
+        calcInterpolation() {
+            if (!this.interpTableName || this.interpCalcX === null || this.interpCalcX === '') {
+                this.interpCalcResult = null; return;
+            }
+            const td = this.interpolationTables[this.interpTableName];
+            if (!td) return;
+            const x = parseFloat(this.interpCalcX);
+            if (isNaN(x)) { this.interpCalcResult = null; return; }
+            const xs = td.x, ys = td.y;
+            let result;
+            if (x <= xs[0]) { result = ys[0]; }
+            else if (x >= xs[xs.length-1]) { result = ys[ys.length-1]; }
+            else {
+                for (let i = 0; i < xs.length - 1; i++) {
+                    if (x >= xs[i] && x <= xs[i+1]) {
+                        const t = (x - xs[i]) / (xs[i+1] - xs[i]);
+                        result = ys[i] + t * (ys[i+1] - ys[i]);
+                        break;
+                    }
+                }
+            }
+            this.interpCalcResult = result !== undefined ? parseFloat(result.toFixed(4)) : null;
+        },
+
+        renderInterpChart() {
+            if (!this.interpTableName) {
+                if (this.interpChart){this.interpChart.destroy();this.interpChart=null;}
+                return;
+            }
+            const td = this.interpolationTables[this.interpTableName];
+            if (!td) return;
+
+            const lineData = td.x.map((x, i) => ({x, y: td.y[i]}));
+            const hasPoint = this.interpCalcResult !== null && typeof this.interpCalcX === 'number' && isFinite(this.interpCalcX);
+            const pointData = hasPoint ? [{ x: this.interpCalcX, y: this.interpCalcResult }] : [];
+
+            // Если chart уже есть — обновляем данные без пересоздания
+            if (this.interpChart) {
+                this.interpChart.data.datasets[0].data = lineData;
+                if (this.interpChart.data.datasets.length > 1) {
+                    this.interpChart.data.datasets[1].data = pointData;
+                }
+                this.interpChart.update();
+                return;
+            }
+
+            // Первое создание
+            const canvas = document.getElementById('interpChart');
+            if (!canvas) {
+                this.$nextTick(() => this.renderInterpChart());
+                return;
+            }
+
+            const datasets = [
+                {
+                    label: this.interpTableName,
+                    data: lineData,
+                    borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.1)',
+                    fill:true, tension:0.3, pointRadius:3, showLine:true,
+                    order: 2,  // рисуется первой (под точкой)
+                },
+                {
+                    label: 'Точка',
+                    data: pointData,
+                    borderColor:'#ef4444', backgroundColor:'#ef4444',
+                    pointRadius: 12, pointHoverRadius: 14,
+                    pointStyle: 'circle',
+                    showLine: false,
+                    order: 1,  // рисуется поверх линии
+                },
+            ];
+
+            this.interpChart = new Chart(canvas, {
+                type:'scatter', data:{datasets},
+                options:{
+                    responsive:true,
+                    plugins:{legend:{display:false}, title:{display:!!td.description, text:td.description||this.interpTableName}},
+                    scales:{x:{title:{display:true,text:'X'}}, y:{title:{display:true,text:'Y'}}}
+                }
+            });
+        }
+    };
+}
+
+// Инициализация слушателей после загрузки Alpine
+document.addEventListener('alpine:init', () => {
+    document.addEventListener('show-param-chart', () => {});
+    document.addEventListener('calc-input', () => {});
+});
+</script>
+{% endblock %}

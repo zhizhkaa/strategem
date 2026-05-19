@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Стратегема - Документация{% endblock %}
+{% block nav_items %}
+<span
+    class="text-strategem-200 text-sm"
+    x-data
+    x-text="localStorage.getItem('strategem_team_name') || 'Команда'"
+></span>
+<a href="/game/" class="hover:bg-strategem-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+    ← Сводный лист
+</a>
+{% endblock %}
+{% block content %}
+<div x-data="docsApp()" x-init="init()" x-cloak>
+
+    <!-- Loading -->
+    <div x-show="loading" class="flex items-center justify-center min-h-[300px]">
+        <div class="loader mx-auto" style="width: 48px; height: 48px"></div>
+    </div>
+
+    <div x-show="!loading">
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <h1 class="text-xl font-bold text-gray-900">Справка</h1>
+                <p class="text-sm text-gray-500">Материалы и документация по игре</p>
+            </div>
+            <div class="flex gap-2">
+                <button
+                    @click="activeScope = 'general'"
+                    :class="activeScope === 'general' ? 'bg-strategem-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'"
+                    class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors"
+                >Общие</button>
+                <button
+                    @click="activeScope = ministerKey"
+                    :class="activeScope === ministerKey ? 'bg-strategem-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'"
+                    x-show="ministerKey"
+                    class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors"
+                    x-text="'Для ' + ministerLabel"
+                ></button>
+            </div>
+        </div>
+
+        <!-- Empty state -->
+        <div
+            x-show="filteredDocs.length === 0"
+            class="bg-white rounded-lg shadow-md p-12 text-center"
+        >
+            <svg class="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            <p class="text-gray-500">Файлы не загружены</p>
+        </div>
+
+        <!-- Documents list -->
+        <div x-show="filteredDocs.length > 0" class="grid gap-3">
+            <template x-for="doc in filteredDocs" :key="doc.id">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex items-center justify-between gap-4">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <div class="w-10 h-10 bg-strategem-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <svg class="w-5 h-5 text-strategem-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                        </div>
+                        <div class="min-w-0">
+                            <p class="font-medium text-gray-900 text-sm" x-text="doc.title"></p>
+                            <p class="text-xs text-gray-500 mt-0.5" x-text="doc.filename"></p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <a
+                            :href="doc.url"
+                            target="_blank"
+                            class="px-3 py-1.5 text-sm bg-strategem-50 text-strategem-700 rounded-md hover:bg-strategem-100 transition-colors font-medium"
+                        >Просмотреть</a>
+                        <a
+                            :href="doc.url"
+                            :download="doc.filename"
+                            class="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors font-medium"
+                        >Скачать</a>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+function docsApp() {
+    return {
+        loading: true,
+        documents: [],
+        activeScope: 'general',
+        ministerKey: null,
+        ministerLabel: '',
+
+        get filteredDocs() {
+            if (this.activeScope === 'general') {
+                return this.documents.filter(d => d.scope === 'general');
+            }
+            return this.documents.filter(d => d.scope === 'minister' && d.minister === this.activeScope);
+        },
+
+        async init() {
+            // Определяем министра из URL (если открыта со страницы министра)
+            const params = new URLSearchParams(window.location.search);
+            this.ministerKey = params.get('minister') || null;
+            if (this.ministerKey) {
+                this.activeScope = this.ministerKey;
+                const labels = {
+                    population: 'Населения',
+                    energy: 'Энергетики',
+                    industry: 'Промышленности',
+                    agriculture: 'С/х',
+                    trade_finance: 'Торговли и финансов',
+                };
+                this.ministerLabel = labels[this.ministerKey] || this.ministerKey;
+            }
+
+            try {
+                const data = await API.get('/documents/');
+                this.documents = data.documents || [];
+            } catch (_) {}
+            this.loading = false;
+        },
+    };
+}
+</script>
+{% endblock %}

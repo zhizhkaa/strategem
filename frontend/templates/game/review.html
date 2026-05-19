@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Стратегема - Переход к сводному листу{% endblock %}
+{% block nav_items %}
+<span
+    class="text-strategem-200 text-sm"
+    x-data
+    x-text="localStorage.getItem('strategem_team_name') || 'Команда'"
+></span>
+<a href="/game/" class="hover:bg-strategem-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+    ← Сводный лист
+</a>
+{% endblock %}
+{% block content %}
+<meta http-equiv="refresh" content="1; url=/game/">
+<div class="max-w-2xl mx-auto">
+    <div class="bg-white rounded-lg shadow-md p-6 border border-gray-200">
+        <h1 class="text-xl font-bold text-gray-900 mb-3">Сводный лист перенесен в `/game/`</h1>
+        <p class="text-sm text-gray-600 mb-2">
+            Канонический экран ввода, проверки и завершения периода находится на сводном листе.
+        </p>
+        <p class="text-sm text-gray-600 mb-4">
+            Новый период начинается только там. Сейчас произойдет автоматический переход.
+        </p>
+        <a href="/game/" class="inline-flex items-center px-4 py-2 bg-strategem-600 text-white font-medium rounded-md hover:bg-strategem-700 transition-colors">
+            Перейти на сводный лист
+        </a>
+    </div>
+</div>
+{% endblock %}

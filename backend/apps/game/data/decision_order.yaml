@@ -1,0 +1,369 @@
+# Порядок принятия решений в игре Стратегема
+#
+# Режим параллельного заполнения:
+#   parallel_mode: true  — все этапы доступны одновременно, порядок ввода не важен.
+#   parallel_mode: false — строгая последовательность через requires (legacy-режим).
+#
+# Поле `requires` сохранено как документация логических зависимостей;
+# при parallel_mode: true оно не используется для блокировки ввода.
+#
+# Категории решений (decision states):
+#   - capital: уровень принятия решений по капиталовложениям (0-4)
+#   - energy: уровень принятия решений по энергетике (0-1)
+#   - finance: уровень принятия финансовых решений (0-3)
+#   - import: уровень принятия решений по импорту (0-3)
+
+parallel_mode: false
+
+# ============================================
+# ЭТАП 1: РАСПРЕДЕЛЕНИЕ ПРОДОВОЛЬСТВИЯ
+# ============================================
+# Министр по делам населения
+# Нет предварительных требований
+
+food_distribution:
+  order: 1
+  name: "Распределение продовольствия"
+  minister: "population"
+  description: "Распределение продовольствия между населением и экспортом"
+  requires: []
+  sets_decision:
+    category: "finance"
+    level: 1
+  inputs:
+    - param: "P9"
+      name: "Продовольствие для населения"
+      validation: "0 <= P9 <= min(P2, P1 * 25)"
+  auto_calculated:
+    - param: "P10"
+      formula: "P2 - P9"
+      name: "Продовольствие на экспорт"
+
+# ============================================
+# ЭТАП 2: РАСПРЕДЕЛЕНИЕ ТОВАРОВ
+# ============================================
+# Министр по делам населения
+# Требует: этап 1
+
+goods_distribution:
+  order: 2
+  name: "Распределение товаров"
+  minister: "population"
+  description: "Распределение товаров между населением, капиталовложениями и экспортом"
+  requires:
+    - category: "finance"
+      level: 1
+  sets_decision:
+    - category: "capital"
+      level: 1
+    - category: "finance"
+      level: 2
+  inputs:
+    - param: "P11"
+      name: "Товары для населения"
+      validation: "0 <= P11 <= min(P3, P1 * 75)"
+    - param: "P12"
+      name: "Товары для капиталовложений"
+      validation: "0 <= P12 <= P3 - P11"
+  auto_calculated:
+    - param: "P13"
+      formula: "P3 - P11 - P12"
+      name: "Товары на экспорт"
+
+# ============================================
+# ЭТАП 3: РАСПРЕДЕЛЕНИЕ ЭНЕРГОРЕСУРСОВ
+# ============================================
+# Министр энергетики
+# Требует: этап 2 (finance >= 2)
+
+energy_distribution:
+  order: 3
+  name: "Распределение энергоресурсов"
+  minister: "energy"
+  description: "Распределение энергоресурсов между населением, экспортом, резервом и производством"
+  requires:
+    - category: "finance"
+      level: 2
+  sets_decision:
+    - category: "finance"
+      level: 3
+    - category: "energy"
+      level: 1
+  inputs:
+    - param: "E20"
+      name: "Энергоресурсы для населения"
+      validation: "E20 == P11 / 5"
+      note: "Фиксированное значение = P11 / 5"
+    - param: "E21"
+      name: "Энергоресурсы на экспорт"
+      validation: "0 <= E21 <= E7 - E20"
+    - param: "E22"
+      name: "Энергоресурсы в резерв"
+      validation: "0 <= E22 <= E7 - E20 - E21"
+  auto_calculated:
+    - param: "E23"
+      formula: "E7 - E20 - E21 - E22"
+      name: "Энергоресурсы для производства"
+
+# ============================================
+# ЭТАП 4: РАСПРЕДЕЛЕНИЕ ЭНЕРГИИ НА ПРОИЗВОДСТВО
+# ============================================
+# Министр энергетики
+# Требует: этап 3 (energy >= 1)
+
+energy_production:
+  order: 4
+  name: "Распределение энергии на производство"
+  minister: "energy"
+  description: "Распределение энергии между производством продовольствия и товаров"
+  requires:
+    - category: "energy"
+      level: 1
+  sets_decision: []
+  inputs:
+    - param: "E24"
+      name: "Энергия для производства продовольствия"
+      validation: "0 <= E24 <= E23"
+  auto_calculated:
+    - param: "E25"
+      formula: "E23 - E24"
+      name: "Энергия для производства товаров"
+
+# ============================================
+# ЭТАП 5: КАПИТАЛОВЛОЖЕНИЯ В ЭНЕРГЕТИКУ
+# ============================================
+# Министр энергетики
+# Требует: этап 2 (capital >= 1)
+
+energy_investment:
+  order: 5
+  name: "Капиталовложения в энергетику"
+  minister: "energy"
+  description: "Распределение капиталовложений в генерацию энергии и энергосбережение"
+  requires:
+    - category: "capital"
+      level: 1
+  sets_decision:
+    category: "capital"
+    level: 2
+  inputs:
+    - param: "E26"
+      name: "Капиталовложения в генерацию энергии"
+      validation: "0 <= E26 <= P12"
+    - param: "E27"
+      name: "Капиталовложения в энергосбережение"
+      validation: "0 <= E27 <= min(P12 - E26, G18 + F14)"
+
+# ============================================
+# ЭТАП 6: КАПИТАЛОВЛОЖЕНИЯ В ПРОМЫШЛЕННОСТЬ
+# ============================================
+# Министр промышленности и сферы услуг
+# Требует: этап 5 (capital >= 2)
+
+industry_investment:
+  order: 6
+  name: "Капиталовложения в промышленность"
+  minister: "industry"
+  description: "Распределение капиталовложений в производство товаров и сферу услуг"
+  requires:
+    - category: "capital"
+      level: 2
+  sets_decision:
+    category: "capital"
+    level: 3
+  inputs:
+    - param: "G18"
+      name: "Капиталовложения в производство товаров"
+      validation: "0 <= G18 <= P12 - E26 - E27"
+    - param: "G19"
+      name: "Капиталовложения в сферу услуг"
+      validation: "0 <= G19 <= P12 - E26 - E27 - G18"
+
+# ============================================
+# ЭТАП 7: КАПИТАЛОВЛОЖЕНИЯ В СЕЛЬСКОЕ ХОЗЯЙСТВО
+# ============================================
+# Министр сельского хозяйства
+# Требует: этап 6 (capital >= 3)
+
+agriculture_investment:
+  order: 7
+  name: "Капиталовложения в сельское хозяйство"
+  minister: "agriculture"
+  description: "Распределение капиталовложений в производство продовольствия и защиту окружающей среды"
+  requires:
+    - category: "capital"
+      level: 3
+  sets_decision:
+    category: "capital"
+    level: 4
+  inputs:
+    - param: "F14"
+      name: "Капиталовложения в производство продовольствия"
+      validation: "0 <= F14 <= P12 - E26 - E27 - G18 - G19"
+  auto_calculated:
+    - param: "F15"
+      formula: "P12 - E26 - E27 - G18 - G19 - F14"
+      name: "Капиталовложения в защиту окружающей среды"
+
+# ============================================
+# ЭТАП 8: УЧЕТ ВАЛЮТНЫХ ПОСТУПЛЕНИЙ
+# ============================================
+# Министр внешней торговли и финансов
+# Требует: этап 3 (finance >= 3)
+
+currency_revenue:
+  order: 8
+  name: "Учет валютных поступлений"
+  minister: "trade_finance"
+  flow: "operator"
+  description: "Фиксация валютных поступлений от экспорта и иностранной помощи"
+  requires:
+    - category: "finance"
+      level: 3
+  inputs:
+    - param: "TF9"
+      name: "Иностранная помощь"
+      controller: "operator"
+      validation: "TF9 >= 0"
+    - param: "TF10"
+      name: "Валюта от экспорта энергии"
+      validation: "TF10 == E21"
+      note: "Фиксированное значение = E21"
+    - param: "TF11"
+      name: "Валюта от экспорта товаров"
+      validation: "TF11 == P13"
+      note: "Фиксированное значение = P13"
+    - param: "TF12"
+      name: "Валюта от экспорта продовольствия"
+      validation: "TF12 == P10"
+      note: "Фиксированное значение = P10"
+
+# ============================================
+# ЭТАП 9: ОФОРМЛЕНИЕ НОВОГО КРЕДИТА
+# ============================================
+# Министр внешней торговли и финансов
+# Может выполняться после этапа 8
+
+loan:
+  order: 9
+  name: "Оформление нового кредита"
+  minister: "trade_finance"
+  description: "Получение нового кредита"
+  requires:
+    - category: "finance"
+      level: 3
+  sets_decision:
+    category: "import"
+    level: 2
+  inputs:
+    - param: "TF13"
+      name: "Сумма нового кредита"
+      validation: "0 <= TF13 <= TF5"
+
+# ============================================
+# ЭТАП 10: ВЫПЛАТА ПО ВНЕШНЕМУ ДОЛГУ
+# ============================================
+# Министр внешней торговли и финансов
+# Может выполняться после этапа 9
+
+debt_payment:
+  order: 10
+  name: "Выплата по внешнему долгу"
+  minister: "trade_finance"
+  description: "Выплата основной суммы по внешнему долгу"
+  requires:
+    - category: "import"
+      level: 2
+  sets_decision:
+    category: "import"
+    level: 3
+  inputs:
+    - param: "TF14"
+      name: "Сумма выплаты по долгу"
+      validation: "0 <= TF14 <= TF1"
+  auto_calculated:
+    - param: "TF15"
+      formula: "TF9 + TF10 + TF11 + TF12 + TF13 - TF14"
+      name: "Доступная валюта для импорта"
+
+# ============================================
+# ЭТАП 11: РАСПРЕДЕЛЕНИЕ ВАЛЮТЫ НА ИМПОРТ
+# ============================================
+# Министр внешней торговли и финансов
+# Требует: этап 10 (import >= 3)
+
+import_distribution:
+  order: 11
+  name: "Распределение валюты на импорт"
+  minister: "trade_finance"
+  description: "Распределение валюты на импорт энергии, товаров и продовольствия"
+  requires:
+    - category: "import"
+      level: 3
+  sets_decision: []
+  inputs:
+    - param: "TF16"
+      name: "Валюта для импорта энергии"
+      validation: "0 <= TF16 <= TF15"
+    - param: "TF17"
+      name: "Валюта для импорта товаров"
+      validation: "0 <= TF17 <= TF15 - TF16"
+  auto_calculated:
+    - param: "TF18"
+      formula: "TF15 - TF16 - TF17"
+      name: "Валюта для импорта продовольствия"
+
+# ============================================
+# ПОРЯДОК РАСЧЁТОВ ПРИ ПЕРЕХОДЕ К НОВОМУ ПЕРИОДУ
+# ============================================
+# Формулы применяются в следующем порядке (ссылки на formulas.yaml)
+
+calculation_order:
+  - calc_energy
+  - calc_agriculture
+  - calc_industry
+  - calc_finance
+  - calc_population
+  - calc_capital
+  - calc_energy_consumption
+  - calc_production_indicators
+  - calc_trade_finance
+  - calc_energy_balance
+  - calc_goods_production
+  - calc_food_production
+  - calc_final_totals
+
+# ============================================
+# МИНИСТРЫ И ИХ ЗОНЫ ОТВЕТСТВЕННОСТИ
+# ============================================
+
+ministers:
+  population:
+    name: "Министр по делам населения"
+    decisions:
+      - food_distribution
+      - goods_distribution
+
+  energy:
+    name: "Министр энергетики"
+    decisions:
+      - energy_distribution
+      - energy_production
+      - energy_investment
+
+  industry:
+    name: "Министр промышленности и сферы услуг"
+    decisions:
+      - industry_investment
+
+  agriculture:
+    name: "Министр сельского хозяйства"
+    decisions:
+      - agriculture_investment
+
+  trade_finance:
+    name: "Министр внешней торговли и финансов"
+    decisions:
+      - loan
+      - debt_payment
+      - import_distribution

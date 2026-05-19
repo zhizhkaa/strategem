@@ -1,0 +1,627 @@
+{% extends "base.html" %}
+{% block title %}Стратегема - Графики{% endblock %}
+{% block nav_items %}
+<span
+    class="text-strategem-200 text-sm"
+    x-data
+    x-text="localStorage.getItem('strategem_team_name') || 'Команда'"
+></span>
+<a
+    href="/game/"
+    class="hover:bg-strategem-600 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+>
+    ← Вернуться к игре
+</a>
+{% endblock %}
+{% block content %}
+<div x-data="chartsApp()" x-init="init()" x-cloak>
+    <!-- Loading State -->
+    <div
+        x-show="loading"
+        class="flex items-center justify-center min-h-[400px]"
+    >
+        <div class="text-center">
+            <div
+                class="loader mx-auto mb-4"
+                style="width: 48px; height: 48px"
+            ></div>
+            <p class="text-gray-600">Загрузка графиков...</p>
+        </div>
+    </div>
+
+    <!-- Error State -->
+    <div
+        x-show="!loading && error"
+        class="bg-red-50 border border-red-200 rounded-lg p-6 text-center"
+    >
+        <p class="text-red-700 mb-4" x-text="error"></p>
+        <a href="/game/" class="text-strategem-600 hover:underline"
+            >Вернуться к игре</a
+        >
+    </div>
+
+    <!-- Charts Content -->
+    <div x-show="!loading && !error" class="space-y-6">
+        <!-- Header -->
+        <div class="bg-white rounded-lg shadow-md p-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-900">
+                        Графики состояния страны
+                    </h1>
+                    <p class="text-gray-600 text-sm" x-text="teamName"></p>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span class="text-sm text-gray-500">
+                        Период:
+                        <span
+                            class="font-semibold"
+                            x-text="currentPeriod"
+                        ></span>
+                        из
+                        <span x-text="totalPeriods"></span>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Parameter Search -->
+        <div class="bg-white rounded-lg shadow-md p-4">
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Поиск параметра для отображения
+                </label>
+                <div class="flex gap-2">
+                    <input
+                        type="text"
+                        x-model="searchQuery"
+                        @input="filterParameters()"
+                        placeholder="Введите код (P1, E7, TF1) или название параметра..."
+                        class="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-strategem-500 focus:border-transparent"
+                    />
+                    <button
+                        @click="clearSearch()"
+                        class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-md transition-colors"
+                    >
+                        Очистить
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Search Results -->
+            <div x-show="searchQuery && filteredParams.length > 0" class="space-y-2">
+                <p class="text-sm text-gray-600 mb-2">Найдено параметров: <span x-text="filteredParams.length"></span></p>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-60 overflow-y-auto">
+                    <template x-for="param in filteredParams" :key="param.code">
+                        <button
+                            @click="addParameterToChart(param.code)"
+                            class="text-left px-3 py-2 border border-gray-200 rounded hover:bg-strategem-50 hover:border-strategem-400 transition-colors"
+                        >
+                            <div class="font-mono text-sm font-semibold text-strategem-600" x-text="param.code"></div>
+                            <div class="text-xs text-gray-600" x-text="param.name"></div>
+                        </button>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Custom Chart -->
+            <div x-show="customChartParams.length > 0" class="mt-4 pt-4 border-t">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-semibold text-gray-900">Выбранные параметры</h3>
+                    <button
+                        @click="clearCustomChart()"
+                        class="text-sm text-red-600 hover:text-red-700"
+                    >
+                        Очистить все
+                    </button>
+                </div>
+                <div class="flex flex-wrap gap-2 mb-4">
+                    <template x-for="param in customChartParams" :key="param">
+                        <span class="inline-flex items-center px-3 py-1 bg-strategem-100 text-strategem-800 rounded-full text-sm">
+                            <span class="font-mono font-semibold" x-text="param"></span>
+                            <button
+                                @click="removeParameterFromChart(param)"
+                                class="ml-2 text-strategem-600 hover:text-strategem-800"
+                            >
+                                ✕
+                            </button>
+                        </span>
+                    </template>
+                </div>
+                <div class="bg-white rounded-lg border border-gray-200 p-4">
+                    <div class="h-96">
+                        <canvas id="customChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Population Chart -->
+            <div class="bg-white rounded-lg shadow-md p-4">
+                <h2
+                    class="text-lg font-semibold text-gray-900 mb-4 flex items-center"
+                >
+                    <span class="w-3 h-3 bg-blue-500 rounded-full mr-2"></span>
+                    Население и качество жизни
+                </h2>
+                <div class="h-80">
+                    <canvas id="populationChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Economy Chart -->
+            <div class="bg-white rounded-lg shadow-md p-4">
+                <h2
+                    class="text-lg font-semibold text-gray-900 mb-4 flex items-center"
+                >
+                    <span class="w-3 h-3 bg-green-500 rounded-full mr-2"></span>
+                    Производство
+                </h2>
+                <div class="h-80">
+                    <canvas id="economyChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Capital Chart -->
+            <div class="bg-white rounded-lg shadow-md p-4">
+                <h2
+                    class="text-lg font-semibold text-gray-900 mb-4 flex items-center"
+                >
+                    <span
+                        class="w-3 h-3 bg-yellow-500 rounded-full mr-2"
+                    ></span>
+                    Капитал
+                </h2>
+                <div class="h-80">
+                    <canvas id="capitalChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Finance Chart -->
+            <div class="bg-white rounded-lg shadow-md p-4">
+                <h2
+                    class="text-lg font-semibold text-gray-900 mb-4 flex items-center"
+                >
+                    <span
+                        class="w-3 h-3 bg-purple-500 rounded-full mr-2"
+                    ></span>
+                    Финансы
+                </h2>
+                <div class="h-80">
+                    <canvas id="financeChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Environment Chart -->
+            <div class="bg-white rounded-lg shadow-md p-4 lg:col-span-2">
+                <h2
+                    class="text-lg font-semibold text-gray-900 mb-4 flex items-center"
+                >
+                    <span class="w-3 h-3 bg-teal-500 rounded-full mr-2"></span>
+                    Экология
+                </h2>
+                <div class="h-80">
+                    <canvas id="environmentChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Legend / Info -->
+        <div class="bg-white rounded-lg shadow-md p-4">
+            <h3 class="font-semibold text-gray-900 mb-3">Описание графиков</h3>
+            <div
+                class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm text-gray-600"
+            >
+                <div>
+                    <span class="font-medium text-blue-600">Население и качество жизни:</span>
+                    Численность населения, обеспеченность продовольствием, товарами и услугами, демография.
+                </div>
+                <div>
+                    <span class="font-medium text-green-600">Производство:</span>
+                    Фактическое производство продовольствия, товаров и энергии.
+                </div>
+                <div>
+                    <span class="font-medium text-yellow-600">Капитал:</span>
+                    Основные капиталы отраслей экономики.
+                </div>
+                <div>
+                    <span class="font-medium text-purple-600">Финансы:</span>
+                    Внешний долг и кредиты.
+                </div>
+                <div>
+                    <span class="font-medium text-teal-600"
+                        >Экология:</span
+                    >
+                    Состояние окружающей среды и природоохранный капитал.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    function chartsApp() {
+        return {
+            // State
+            gameId: null,
+            teamName: "",
+            loading: true,
+            error: null,
+            currentPeriod: 1,
+            totalPeriods: 10,
+            chartsData: null,
+            allPeriods: [],
+
+            // Search & Custom Chart
+            searchQuery: "",
+            filteredParams: [],
+            customChartParams: [],
+            allParameters: [],
+
+            // Chart instances
+            charts: {},
+
+            // Methods
+            async init() {
+                this.gameId = localStorage.getItem("strategem_game");
+                this.teamName =
+                    localStorage.getItem("strategem_team_name") || "Команда";
+
+                if (!this.gameId) {
+                    this.error = "Игра не выбрана. Вернитесь к выбору команды.";
+                    this.loading = false;
+                    return;
+                }
+
+                await this.loadCharts();
+                this.loading = false;
+            },
+
+            async loadCharts() {
+                try {
+                    // Load game state for period info
+                    const gameState = await API.get(
+                        `/games/${this.gameId}/state/`,
+                    );
+                    this.currentPeriod =
+                        gameState.game_info?.current_period || 1;
+                    this.totalPeriods =
+                        gameState.game_info?.total_periods || 10;
+
+                    // Load charts data
+                    this.chartsData = await API.get(
+                        `/games/${this.gameId}/charts/`,
+                    );
+
+                    // Load all periods for search functionality
+                    const periodsResponse = await API.get(
+                        `/games/${this.gameId}/periods/`,
+                    );
+                    this.allPeriods = periodsResponse.results || periodsResponse;
+
+                    // Build parameters list for search
+                    this.buildParametersList();
+
+                    this.$nextTick(() => {
+                        this.renderAllCharts();
+                    });
+                } catch (e) {
+                    this.error = "Ошибка загрузки данных: " + e.message;
+                }
+            },
+
+            buildParametersList() {
+                // Collect all unique parameters from all periods
+                const paramsMap = new Map();
+                
+                this.allPeriods.forEach(period => {
+                    Object.entries(period.parameters || {}).forEach(([code, value]) => {
+                        if (!paramsMap.has(code)) {
+                            paramsMap.set(code, {
+                                code: code,
+                                name: this.getParameterName(code),
+                                category: this.getParameterCategory(code)
+                            });
+                        }
+                    });
+                });
+
+                this.allParameters = Array.from(paramsMap.values()).sort((a, b) => 
+                    a.code.localeCompare(b.code)
+                );
+            },
+
+            getParameterName(code) {
+                // Try to find in existing chart data
+                for (const category of Object.values(this.chartsData || {})) {
+                    const param = category.find(p => p.name === code);
+                    if (param) return param.verbose_name || code;
+                }
+                return code;
+            },
+
+            getParameterCategory(code) {
+                if (code.startsWith('P')) return 'population';
+                if (code.startsWith('E')) return 'energy';
+                if (code.startsWith('G')) return 'industry';
+                if (code.startsWith('F')) return 'agriculture';
+                if (code.startsWith('TF')) return 'trade';
+                return 'other';
+            },
+
+            filterParameters() {
+                if (!this.searchQuery || this.searchQuery.length < 1) {
+                    this.filteredParams = [];
+                    return;
+                }
+
+                const query = this.searchQuery.toLowerCase();
+                this.filteredParams = this.allParameters.filter(param =>
+                    param.code.toLowerCase().includes(query) ||
+                    param.name.toLowerCase().includes(query)
+                ).slice(0, 30); // Limit results
+            },
+
+            clearSearch() {
+                this.searchQuery = "";
+                this.filteredParams = [];
+            },
+
+            addParameterToChart(paramCode) {
+                if (!this.customChartParams.includes(paramCode)) {
+                    this.customChartParams.push(paramCode);
+                    this.$nextTick(() => {
+                        this.renderCustomChart();
+                    });
+                }
+            },
+
+            removeParameterFromChart(paramCode) {
+                const index = this.customChartParams.indexOf(paramCode);
+                if (index > -1) {
+                    this.customChartParams.splice(index, 1);
+                    if (this.customChartParams.length > 0) {
+                        this.$nextTick(() => {
+                            this.renderCustomChart();
+                        });
+                    } else if (this.charts.custom) {
+                        this.charts.custom.destroy();
+                        delete this.charts.custom;
+                    }
+                }
+            },
+
+            clearCustomChart() {
+                this.customChartParams = [];
+                if (this.charts.custom) {
+                    this.charts.custom.destroy();
+                    delete this.charts.custom;
+                }
+            },
+
+            renderCustomChart() {
+                const ctx = document.getElementById("customChart");
+                if (!ctx) return;
+
+                // Destroy previous chart
+                if (this.charts.custom) {
+                    this.charts.custom.destroy();
+                }
+
+                const datasets = this.customChartParams.map((paramCode, index) => {
+                    const data = this.allPeriods.map(period => ({
+                        x: period.period_number,
+                        y: period.parameters[paramCode] || 0
+                    }));
+
+                    const colors = [
+                        '#3b82f6', '#22c55e', '#eab308', '#a855f7', '#14b8a6',
+                        '#f97316', '#ec4899', '#6366f1', '#84cc16', '#06b6d4'
+                    ];
+
+                    return {
+                        label: this.getParameterName(paramCode) + ' (' + paramCode + ')',
+                        data: data,
+                        borderColor: colors[index % colors.length],
+                        backgroundColor: colors[index % colors.length] + '20',
+                        tension: 0.3,
+                        fill: false,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                    };
+                });
+
+                this.charts.custom = new Chart(ctx, {
+                    type: "line",
+                    data: { datasets },
+                    options: this.getChartOptions("Период", "Значение"),
+                });
+            },
+
+            renderAllCharts() {
+                this.renderPopulationChart();
+                this.renderEconomyChart();
+                this.renderCapitalChart();
+                this.renderFinanceChart();
+                this.renderEnvironmentChart();
+            },
+
+            renderPopulationChart() {
+                const ctx = document.getElementById("populationChart");
+                if (!ctx || !this.chartsData?.population) return;
+
+                const datasets = this.createDatasets(
+                    this.chartsData.population,
+                    ["#3b82f6", "#60a5fa", "#93c5fd", "#1d4ed8", "#2563eb"],
+                );
+
+                this.charts.population = new Chart(ctx, {
+                    type: "line",
+                    data: { datasets },
+                    options: this.getChartOptions("Период", "Значение"),
+                });
+            },
+
+            renderEconomyChart() {
+                const ctx = document.getElementById("economyChart");
+                if (!ctx || !this.chartsData?.economy) return;
+
+                const datasets = this.createDatasets(this.chartsData.economy, [
+                    "#22c55e",
+                    "#4ade80",
+                    "#86efac",
+                    "#15803d",
+                ]);
+
+                this.charts.economy = new Chart(ctx, {
+                    type: "line",
+                    data: { datasets },
+                    options: this.getChartOptions("Период", "Значение"),
+                });
+            },
+
+            renderCapitalChart() {
+                const ctx = document.getElementById("capitalChart");
+                if (!ctx || !this.chartsData?.capital) return;
+
+                const datasets = this.createDatasets(this.chartsData.capital, [
+                    "#eab308",
+                    "#facc15",
+                    "#fde047",
+                    "#ca8a04",
+                ]);
+
+                this.charts.capital = new Chart(ctx, {
+                    type: "line",
+                    data: { datasets },
+                    options: this.getChartOptions("Период", "Значение"),
+                });
+            },
+
+            renderFinanceChart() {
+                const ctx = document.getElementById("financeChart");
+                if (!ctx || !this.chartsData?.finance) return;
+
+                const datasets = this.createDatasets(this.chartsData.finance, [
+                    "#a855f7",
+                    "#c084fc",
+                    "#d8b4fe",
+                    "#7c3aed",
+                ]);
+
+                this.charts.finance = new Chart(ctx, {
+                    type: "line",
+                    data: { datasets },
+                    options: this.getChartOptions("Период", "Значение"),
+                });
+            },
+
+            renderEnvironmentChart() {
+                const ctx = document.getElementById("environmentChart");
+                if (!ctx || !this.chartsData?.environment) return;
+
+                const datasets = this.createDatasets(
+                    this.chartsData.environment,
+                    ["#14b8a6", "#2dd4bf", "#5eead4", "#0d9488"],
+                );
+
+                this.charts.environment = new Chart(ctx, {
+                    type: "line",
+                    data: { datasets },
+                    options: this.getChartOptions("Период", "Значение"),
+                });
+            },
+
+            createDatasets(data, colors) {
+                if (!data || !Array.isArray(data)) return [];
+
+                return data.map((item, index) => ({
+                    label:
+                        item.verbose_name ||
+                        item.name ||
+                        `Параметр ${index + 1}`,
+                    data: (item.data || []).map((d) => ({
+                        x: d.period,
+                        y: d.value,
+                    })),
+                    borderColor: colors[index % colors.length],
+                    backgroundColor: colors[index % colors.length] + "20",
+                    tension: 0.3,
+                    fill: false,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                }));
+            },
+
+            getChartOptions(xLabel, yLabel) {
+                return {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: "index",
+                    },
+                    plugins: {
+                        legend: {
+                            position: "bottom",
+                            labels: {
+                                usePointStyle: true,
+                                padding: 15,
+                            },
+                        },
+                        tooltip: {
+                            backgroundColor: "rgba(0, 0, 0, 0.8)",
+                            padding: 12,
+                            titleFont: { size: 14 },
+                            bodyFont: { size: 13 },
+                            callbacks: {
+                                label: function (context) {
+                                    let value = context.parsed.y;
+                                    if (value !== null) {
+                                        value = new Intl.NumberFormat(
+                                            "ru-RU",
+                                        ).format(value);
+                                    }
+                                    return `${context.dataset.label}: ${value}`;
+                                },
+                            },
+                        },
+                    },
+                    scales: {
+                        x: {
+                            type: "linear",
+                            title: {
+                                display: true,
+                                text: xLabel,
+                                font: { weight: "bold" },
+                            },
+                            ticks: {
+                                stepSize: 1,
+                            },
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: yLabel,
+                                font: { weight: "bold" },
+                            },
+                            ticks: {
+                                callback: function (value) {
+                                    return new Intl.NumberFormat("ru-RU", {
+                                        notation: "compact",
+                                        maximumFractionDigits: 1,
+                                    }).format(value);
+                                },
+                            },
+                        },
+                    },
+                };
+            },
+        };
+    }
+</script>
+{% endblock %}

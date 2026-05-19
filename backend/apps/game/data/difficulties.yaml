@@ -1,0 +1,107 @@
+standard:
+  meta:
+    energy_curve: LOW
+    oil_crisis_year: 100
+    oil_crisis_duration: 2
+  overrides:
+    E7: 14500
+    E16: 15
+    E17: 12000
+    E19: 1500
+    TF1: 1000
+    TF4: 300
+    TF5: 0
+
+simple:
+  extends: standard
+  meta:
+    energy_curve: HIGH
+  overrides:
+    E7: 15000
+    E16: 18.125
+    E17: 14500
+    E19: 500
+    TF1: 0
+    TF5: 1000
+
+tough:
+  extends: standard
+  overrides:
+    P5: 20
+    F7: 0.6
+
+veryhard:
+  extends: standard
+  meta:
+    energy_curve: LOW
+    oil_crisis_year: 2000
+    oil_crisis_duration: 2
+  overrides:
+    P2: 3000
+    P5: 22
+    F7: 0.5
+    F11: 3000
+
+higheq:
+  meta:
+    energy_curve: LOW
+    oil_crisis_year: 1
+    oil_crisis_duration: 2
+  overrides:
+    P1: 400
+    P2: 9000
+    P3: 38530
+    P4: 4.5
+    P5: 10
+    P6: 13.5
+    P7: 16
+    P8: 10
+    E1: 1000
+    E2: 4000
+    E3: 5000
+    E4: 290
+    E5: 1160
+    E6: 1450
+    E7: 35400
+    E9: 5400
+    E10: 0.5
+    E11: 6.25
+    E12: 10000
+    E13: 10
+    E14: 20000
+    E15: 30000
+    E16: 5
+    E17: 25000
+    E19: 10400
+    G1: 400
+    G2: 1600
+    G3: 2000
+    G4: 710
+    G5: 5690
+    G6: 6400
+    G7: 20
+    G8: 14.4
+    G9: 16
+    G10: 4.8
+    G11: 1
+    G12: 36530
+    G14: 2000
+    G15: 36530
+    G16: 38530
+    G17: 3050
+    F1: 320
+    F2: 1280
+    F3: 1600
+    F4: 330
+    F5: 1650
+    F6: 1980
+    F7: 0.8
+    F8: 1.6
+    F9: 8000
+    F10: 1
+    F11: 8000
+    F13: 1000
+    TF1: 5000
+    TF2: 10
+    TF4: 1000
+    TF5: 5000

@@ -1,0 +1,530 @@
+{% extends "base.html" %}
+{% block title %}Стратегема - Игра{% endblock %}
+{% block nav_items %}
+<span
+    class="text-strategem-200 text-sm"
+    x-data
+    x-text="localStorage.getItem('strategem_team_name') || 'Команда'"
+></span>
+<a
+    href="/game/docs/"
+    class="hover:bg-strategem-600 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+>
+    Справка
+</a>
+<a
+    href="/charts/"
+    class="hover:bg-strategem-600 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+>
+    Графики
+</a>
+<a
+    href="/"
+    class="hover:bg-strategem-600 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+>
+    Сменить команду
+</a>
+{% endblock %}
+{% block content %}
+<div x-data="gameApp()" x-init="init()" x-cloak>
+
+    <!-- Loading -->
+    <div x-show="loading" class="flex items-center justify-center min-h-[400px]">
+        <div class="text-center">
+            <div class="loader mx-auto mb-4" style="width: 48px; height: 48px"></div>
+            <p class="text-gray-600">Загрузка игры...</p>
+        </div>
+    </div>
+
+    <!-- Error -->
+    <div x-show="!loading && error" class="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+        <p class="text-red-700 mb-4" x-text="error"></p>
+        <a href="/" class="text-strategem-600 hover:underline">Вернуться к выбору команды</a>
+    </div>
+
+    <!-- View-only banner -->
+    <div x-show="isViewOnly && !loading && !error" class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3 flex items-center gap-2">
+        <span class="text-yellow-600">🔒</span>
+        <span class="text-yellow-700 font-medium text-sm">Режим просмотра — изменения невозможны</span>
+        <a href="/admin-panel/" class="ml-auto text-yellow-700 hover:underline text-sm">Вернуться в панель администратора</a>
+    </div>
+
+    <!-- Game paused banner -->
+    <div x-show="isGamePaused && !loading && !error" class="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-3 flex items-center gap-2">
+        <span class="text-orange-600">⏸</span>
+        <span class="text-orange-700 font-medium text-sm">Игра приостановлена — принятие решений временно недоступно</span>
+    </div>
+
+    <!-- Main content -->
+    <div x-show="!loading && !error && gameState" class="space-y-3">
+
+        <!-- Header: period info + minister tabs + action button -->
+        <div class="bg-white rounded-lg shadow-md p-3">
+            <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+                <div>
+                    <h1 class="text-lg font-bold text-gray-900">
+                        Сводный лист решений · Период <span x-text="currentPeriod"></span> из <span x-text="totalPeriods"></span>
+                    </h1>
+                    <p class="text-xs text-gray-500" x-text="teamName"></p>
+                    <p class="text-xs text-gray-500 mt-1">
+                        Все решения проверяются и новый период начинается только на сводном листе.
+                    </p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button
+                        @click="submitPeriod()"
+                        :disabled="isViewOnly || isGamePaused || processingAction"
+                        class="px-4 py-2 bg-green-600 text-white font-semibold rounded-md shadow-sm hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2 text-sm"
+                    >
+                        <div x-show="processingAction" class="loader" style="width: 16px; height: 16px"></div>
+                        <span x-show="!processingAction">Внести значения →</span>
+                        <span x-show="processingAction">Проверка...</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Minister tabs -->
+            <div class="flex gap-1.5 flex-wrap border-t border-gray-100 pt-2">
+                <span class="px-3 py-1 text-xs font-semibold bg-strategem-600 text-white rounded-full">Сводный лист</span>
+                <a href="/game/minister/population/"
+                   class="px-3 py-1 text-xs font-medium border border-gray-300 rounded-full hover:border-strategem-400 hover:text-strategem-700 text-gray-600 transition-colors">
+                    Население
+                </a>
+                <a href="/game/minister/energy/"
+                   class="px-3 py-1 text-xs font-medium border border-gray-300 rounded-full hover:border-strategem-400 hover:text-strategem-700 text-gray-600 transition-colors">
+                    Энергетика
+                </a>
+                <a href="/game/minister/industry/"
+                   class="px-3 py-1 text-xs font-medium border border-gray-300 rounded-full hover:border-strategem-400 hover:text-strategem-700 text-gray-600 transition-colors">
+                    Промышленность
+                </a>
+                <a href="/game/minister/agriculture/"
+                   class="px-3 py-1 text-xs font-medium border border-gray-300 rounded-full hover:border-strategem-400 hover:text-strategem-700 text-gray-600 transition-colors">
+                    С/х и среда
+                </a>
+                <a href="/game/minister/trade_finance/"
+                   class="px-3 py-1 text-xs font-medium border border-gray-300 rounded-full hover:border-strategem-400 hover:text-strategem-700 text-gray-600 transition-colors">
+                    Торговля и финансы
+                </a>
+            </div>
+        </div>
+
+        <!-- Validation error banner -->
+        <div x-show="validationErrors.length > 0" class="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
+            <span class="text-red-500 mt-0.5 shrink-0">⚠</span>
+            <p class="text-red-700 text-sm">
+                Найдены ошибки в <span class="font-semibold" x-text="validationErrors.length"></span> параметрах — ячейки выделены красным.
+                Исправьте значения и нажмите «Внести значения» снова.
+            </p>
+        </div>
+
+        <!-- Not all stages filled warning -->
+        <div x-show="validationErrors.length === 0 && Object.keys(incompleteByMinister).length > 0" class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 space-y-2">
+            <p class="text-yellow-800 text-sm font-semibold">Не все решения заполнены:</p>
+            <template x-if="Object.keys(incompleteByMinister).length > 0">
+                <div class="space-y-2">
+                    <template x-for="[minister, params] in Object.entries(incompleteByMinister)" :key="minister">
+                        <div class="text-sm">
+                            <a :href="'/game/minister/' + minister + '/'"
+                               class="font-medium text-strategem-700 hover:underline"
+                               x-text="'→ ' + (getMinisterShort(minister) || minister)"></a>
+                            <span class="text-yellow-700">: не заполнены </span>
+                            <span class="font-mono text-red-600 text-xs" x-text="params.join(', ')"></span>
+                        </div>
+                    </template>
+                </div>
+            </template>
+        </div>
+
+        <!-- Summary Table -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="text-xs border-separate [border-spacing:0] min-w-full">
+                    <!-- Header: sticky name column + one th per period -->
+                    <thead>
+                        <tr class="bg-gray-800 text-white">
+                            <th class="px-2 py-2 text-left font-semibold sticky left-0 bg-gray-800 z-10 min-w-[200px] border-r border-gray-600">Переменная / Название</th>
+                            <template x-for="col in allPeriodCols" :key="col.period">
+                                <th
+                                    :class="col.isCurrent ? 'bg-strategem-700' : col.isPast ? 'bg-gray-600' : 'bg-gray-700 text-gray-400'"
+                                    class="px-1 py-2 text-center w-16 min-w-[56px] font-medium border-r border-gray-600"
+                                    x-text="col.label"
+                                ></th>
+                            </template>
+                        </tr>
+                    </thead>
+
+                    <!-- One <tbody> per group — single root element for x-for, avoids Alpine.js nested rendering bugs -->
+                    <template x-for="group in SUMMARY_GROUPS" :key="group.number">
+                        <tbody>
+
+                            <!-- Group header row -->
+                            <tr class="bg-gray-100 border-t-2 border-gray-400">
+                                <td :colspan="1 + allPeriodCols.length" class="px-2 py-1">
+                                    <div class="flex items-center gap-2">
+                                        <span class="inline-flex items-center justify-center w-5 h-5 rounded bg-gray-700 text-white font-bold text-xs flex-shrink-0" x-text="group.number"></span>
+                                        <span class="font-semibold text-gray-700 text-xs" x-text="group.label"></span>
+                                        <a :href="'/game/minister/' + group.minister + '/'"
+                                           class="text-xs text-strategem-600 hover:underline ml-auto whitespace-nowrap"
+                                           x-text="'→ ' + getMinisterShort(group.minister)"></a>
+                                    </div>
+                                </td>
+                            </tr>
+
+                            <!-- Input param rows -->
+                            <template x-for="param in group.inputs" :key="param">
+                                <tr :class="isError(param) ? 'bg-red-50' : isIncomplete(param) ? 'bg-yellow-50' : 'bg-white hover:bg-blue-50'"
+                                    class="border-b border-gray-100 transition-colors">
+                                    <!-- Name cell (sticky) -->
+                                    <td class="px-2 py-1 sticky left-0 border-r border-gray-200"
+                                        :class="isError(param) ? 'bg-red-50' : isIncomplete(param) ? 'bg-yellow-50' : 'bg-inherit'">
+                                        <span class="font-mono font-bold mr-1"
+                                              :class="isError(param) ? 'text-red-700' : isIncomplete(param) ? 'text-yellow-700' : 'text-strategem-700'"
+                                              x-text="param"></span><span
+                                              class="text-gray-600"
+                                              x-text="PARAM_VERBOSE[param] || param"></span>
+                                    </td>
+                                    <!-- Period cells -->
+                                    <template x-for="col in allPeriodCols" :key="col.period">
+                                        <td class="border-r border-gray-100 p-0"
+                                            :class="col.isCurrent ? (isError(param) ? 'bg-red-50' : isIncomplete(param) ? 'bg-yellow-50' : 'bg-blue-50') : ''">
+                                            <template x-if="col.isCurrent">
+                                                <input type="number"
+                                                       :id="'input-' + param"
+                                                       x-model.number="inputValues[param]"
+                                                       :disabled="!isEnabled(param) || isViewOnly || isGamePaused"
+                                                       @input="touchedParams[param] = true"
+                                                       @change="onCellChange(param)"
+                                                       step="any"
+                                                       :class="isError(param) ? 'border-red-400 bg-red-50 focus:ring-red-400' : isIncomplete(param) ? 'border-yellow-400 bg-yellow-50 focus:ring-yellow-400' : 'border-transparent focus:border-strategem-400 focus:ring-strategem-400 bg-transparent'"
+                                                       class="w-full px-1 py-1 border rounded text-right font-mono text-xs focus:outline-none focus:ring-1 disabled:bg-gray-100 disabled:cursor-not-allowed" />
+                                            </template>
+                                            <template x-if="col.isPast">
+                                                <span class="block px-1 py-1 text-right font-mono text-gray-600"
+                                                      x-text="formatNum(getPastVal(param, col.period))"></span>
+                                            </template>
+                                            <template x-if="!col.isCurrent && !col.isPast">
+                                                <span class="block px-1 py-1 text-center text-gray-300">—</span>
+                                            </template>
+                                        </td>
+                                    </template>
+                                </tr>
+                            </template>
+
+                            <!-- Auto-calculated param rows -->
+                            <template x-for="param in group.auto" :key="param">
+                                <tr class="bg-gray-50 border-b border-gray-100">
+                                    <td class="px-2 py-1 sticky left-0 bg-gray-50 border-r border-gray-200">
+                                        <span class="font-mono text-gray-400 text-xs mr-1" x-text="param"></span><span
+                                              class="text-gray-400 italic text-xs"
+                                              x-text="PARAM_VERBOSE[param] || param"></span>
+                                        <span class="text-gray-300 text-xs not-italic"> (авт.)</span>
+                                    </td>
+                                    <template x-for="col in allPeriodCols" :key="col.period">
+                                        <td class="px-1 py-1 text-right font-mono text-xs border-r border-gray-100"
+                                            :class="col.isCurrent ? 'bg-gray-100 text-gray-700 font-medium' : col.isPast ? 'text-gray-500' : 'text-gray-300'">
+                                            <span x-show="col.isPast"  x-text="formatNum(getPastVal(param, col.period))"></span>
+                                            <span x-show="col.isCurrent" x-text="formatNum(getVal(param))"></span>
+                                            <span x-show="!col.isPast && !col.isCurrent">—</span>
+                                        </td>
+                                    </template>
+                                </tr>
+                            </template>
+
+                            <!-- Total / balance row (only if group has a total) -->
+                            <tr x-show="group.total" class="border-t border-gray-300 bg-gray-200">
+                                <td class="px-2 py-1 sticky left-0 bg-gray-200 border-r border-gray-300">
+                                    <span class="font-bold text-gray-800 text-xs">Всего</span>
+                                    <span class="font-mono text-gray-500 text-xs ml-1"
+                                          x-text="group.total ? '(' + group.total.expr + ')' : ''"></span>
+                                </td>
+                                <template x-for="col in allPeriodCols" :key="col.period">
+                                    <td class="px-1 py-1 text-right font-mono text-xs font-semibold border-r border-gray-300"
+                                        :class="col.isCurrent ? 'bg-strategem-100 text-strategem-800' : col.isPast ? 'text-gray-600' : 'text-gray-300'">
+                                        <span x-show="col.isPast"    x-text="group.total ? formatNum(getPastVal(group.total.ref, col.period)) : ''"></span>
+                                        <span x-show="col.isCurrent" x-text="group.total ? formatNum(getVal(group.total.ref)) : ''"></span>
+                                        <span x-show="!col.isPast && !col.isCurrent">—</span>
+                                    </td>
+                                </template>
+                            </tr>
+
+                        </tbody>
+                    </template>
+                </table>
+            </div>
+        </div>
+
+        <!-- Bottom action bar -->
+        <div class="bg-white rounded-lg shadow-md p-3 flex items-center justify-between flex-wrap gap-3">
+            <p class="text-sm text-gray-500">
+                <span x-show="validationErrors.length > 0" class="text-red-600 font-medium">
+                    Исправьте <span x-text="validationErrors.length"></span> ошибок и нажмите «Внести значения»
+                </span>
+                <span x-show="validationErrors.length === 0 && gameState?.game_info?.can_advance_period" class="text-green-600 font-medium">
+                    Все обязательные поля заполнены — можно завершить период
+                </span>
+                <span x-show="validationErrors.length === 0 && Object.keys(incompleteByMinister).length > 0">
+                    Заполните обязательные поля, затем отправьте период со сводного листа
+                </span>
+            </p>
+            <button
+                @click="submitPeriod()"
+                :disabled="isViewOnly || isGamePaused || processingAction"
+                class="px-5 py-2 bg-green-600 text-white font-semibold rounded-md shadow-sm hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+            >
+                <div x-show="processingAction" class="loader" style="width: 16px; height: 16px"></div>
+                <span x-show="!processingAction">Внести значения →</span>
+                <span x-show="processingAction">Проверка...</span>
+            </button>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+function gameApp() {
+    return {
+        gameId: null,
+        teamName: '',
+        gameState: null,
+        pastPeriods: [],
+        loading: true,
+        error: null,
+        isViewOnly: false,
+        isGamePaused: false,
+        inputValues: {},
+        touchedParams: {},
+        processingAction: false,
+        validationErrors: [],
+        validationErrorSet: {},
+        decisionStates: null,
+        incompleteByMinister: {},
+        incompleteParamSet: {},
+        DECISION_REQUIRED: { capital: 4, energy: 1, finance: 3, import: 3 },
+        DECISION_LABELS: { capital: 'Капиталовложения', energy: 'Энергетика', finance: 'Торговля и финансы', import: 'Импорт' },
+
+        // Заполняется из API /games/decision-structure/
+        SUMMARY_GROUPS: [],
+        PARAM_VERBOSE: {},
+        START_VALUES: {},
+        MINISTER_SHORTS: {},
+        allInputParams: new Set(),
+
+        get currentPeriod() { return this.gameState?.game_info?.current_period || 1; },
+        get totalPeriods()  { return this.gameState?.game_info?.total_periods || 10; },
+
+        get allPeriodCols() {
+            const cols = [];
+            for (const p of this.pastPeriods)
+                cols.push({ period:p.period_number, label:'П'+p.period_number, isCurrent:false, isPast:true });
+            cols.push({ period:this.currentPeriod, label:'П'+this.currentPeriod, isCurrent:true, isPast:false });
+            for (let fp = this.currentPeriod+1; fp <= this.totalPeriods; fp++)
+                cols.push({ period:fp, label:'П'+fp, isCurrent:false, isPast:false });
+            return cols;
+        },
+
+        async init() {
+            this.gameId   = localStorage.getItem('strategem_game');
+            this.teamName = localStorage.getItem('strategem_team_name') || 'Команда';
+            this.isViewOnly = localStorage.getItem('strategem_view_only') === 'true';
+
+            if (!this.gameId) {
+                this.error = 'Игра не выбрана. Вернитесь к выбору команды.';
+                this.loading = false;
+                return;
+            }
+            try {
+                await this.loadStructure();
+                await this.loadState();
+                await this.loadPeriods();
+            } catch(e) {
+                this.error = 'Ошибка загрузки: ' + e.message;
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async loadStructure() {
+            const data = await API.get('/games/decision-structure/');
+            this.SUMMARY_GROUPS = data.summary_groups;
+            this.PARAM_VERBOSE = Object.fromEntries(
+                Object.entries(data.parameters).map(([k, v]) => [k, v.verbose_name])
+            );
+            this.START_VALUES = Object.fromEntries(
+                Object.entries(data.parameters).map(([k, v]) => [k, v.default])
+            );
+            this.MINISTER_SHORTS = Object.fromEntries(
+                Object.entries(data.ministers).map(([k, v]) => [k, v.short_name])
+            );
+            this.allInputParams = new Set(this.SUMMARY_GROUPS.flatMap(g => g.inputs));
+        },
+
+        async loadState() {
+            this.gameState = await API.get(`/games/${this.gameId}/state/`);
+            this.isGamePaused = this.gameState?.game_info?.status === 'paused';
+            if (this.gameState?.game_info?.status === 'finished')
+                window.location.href = '/game-results/';
+            this.applyValidationState(this.gameState?.validation_state);
+            this.initInputs();
+        },
+
+        async loadPeriods() {
+            try {
+                const data = await API.get(`/games/${this.gameId}/periods/`);
+                const periods = data.results || data;
+                this.pastPeriods = periods.filter(p => p.period_number < this.currentPeriod);
+            } catch(_) { this.pastPeriods = []; }
+        },
+
+        initInputs() {
+            if (!this.gameState?.parameters) return;
+            const vals = {};
+            this.touchedParams = {};
+            for (const param of this.allInputParams) {
+                const p = this.gameState.parameters[param];
+                if (!p) continue;
+                const b = p.bounds;
+                if (b?.min != null && b?.max != null && b.min === b.max) { vals[param] = b.min; this.touchedParams[param] = true; }
+                else if (p.status === 'filled') { vals[param] = p.value ?? ''; this.touchedParams[param] = true; }
+                else { vals[param] = p.value ?? ''; }
+            }
+            this.inputValues = vals;
+        },
+
+        setErrors(errors) {
+            this.validationErrors = errors;
+            const s = {};
+            for (const p of errors) s[p] = true;
+            this.validationErrorSet = s;
+        },
+
+        applyValidationState(vs) {
+            if (!vs) return;
+            this.setErrors(vs.errors || []);
+            const byMinister = vs.by_minister || {};
+            const incomplete = {};
+            for (const [m, data] of Object.entries(byMinister)) {
+                if (data.incomplete?.length) incomplete[m] = data.incomplete;
+            }
+            this.incompleteByMinister = incomplete;
+            const flat = {};
+            for (const params of Object.values(incomplete)) {
+                for (const p of params) flat[p] = true;
+            }
+            this.incompleteParamSet = flat;
+        },
+
+        getVal(param)              { return this.gameState?.parameters?.[param]?.value; },
+        getPastVal(param, period)  { const p = this.pastPeriods.find(x => x.period_number === period); return p?.[param] ?? null; },
+        isEnabled(param)           { return this.gameState?.parameters?.[param]?.status !== 'locked'; },
+        isError(param)             { return this.validationErrors.indexOf(param) !== -1; },
+        isIncomplete(param)        { return !!this.incompleteParamSet[param]; },
+        getMinisterShort(key)      { return this.MINISTER_SHORTS[key] || key; },
+
+        onCellChange(param) {
+            this.touchedParams[param] = true;
+            this.recalcAutoParams();
+            const idx = this.validationErrors.indexOf(param);
+            if (idx > -1) this.validationErrors.splice(idx, 1);
+        },
+
+        recalcAutoParams() {
+            if (!this.SUMMARY_GROUPS) return;
+            for (const group of this.SUMMARY_GROUPS) {
+                for (const param of (group.auto || [])) {
+                    const config = this.gameState?.parameters?.[param];
+                    if (!config) continue;
+                    const bounds = config.bounds;
+                    if (bounds && bounds.min !== null && bounds.max !== null
+                        && bounds.min === bounds.max) {
+                        this.inputValues[param] = bounds.min;
+                    }
+                }
+            }
+        },
+
+        async submitPeriod() {
+            if (this.isViewOnly || this.isGamePaused || this.processingAction) return;
+            this.processingAction = true;
+            this.validationErrors = [];
+
+            try {
+                const parameters = {};
+                for (const param of this.allInputParams) {
+                    const value = this.inputValues[param];
+                    if (this.touchedParams[param] && value !== null && value !== undefined && value !== '') {
+                        parameters[param] = Number(value);
+                    }
+                }
+
+                // Шаг 1: Batch-submit всех параметров одним запросом
+                const batchResponse = await API.post(
+                    `/games/${this.gameId}/parameters/batch/`,
+                    { parameters }
+                );
+
+                if (!batchResponse.success) {
+                    this.validationErrors = Object.keys(batchResponse.errors || {});
+                    this.validationErrorSet = batchResponse.errors || {};
+                    showToast(`Ошибки в ${this.validationErrors.length} параметрах`, 'error');
+                    console.debug('Batch validation errors:', batchResponse.errors);
+                    this.processingAction = false;
+                    return;
+                }
+
+                // Перезагружаем состояние после успешного batch-submit
+                await this.loadState();
+
+                // Шаг 2: Валидируем период
+                const validation = await API.post(`/games/${this.gameId}/validate-period/`);
+
+                if (validation.validation_state) {
+                    this.applyValidationState(validation.validation_state);
+                }
+
+                if (!validation.valid) {
+                    showToast(`Ошибки в ${this.validationErrors.length} параметрах`, 'error');
+                    this.processingAction = false;
+                    return;
+                }
+
+                if (!validation.can_advance) {
+                    showToast('Заполните все обязательные поля перед завершением периода', 'warning');
+                    this.processingAction = false;
+                    return;
+                }
+
+                // Шаг 3: Переход к следующему периоду
+                const result = await API.post(`/games/${this.gameId}/next-period/`);
+
+                if (result.success) {
+                    this.setErrors([]);
+                    this.incompleteByMinister = {};
+                    this.incompleteParamSet = {};
+                    if (result.game_finished) {
+                        showToast('Игра завершена!', 'success');
+                        window.location.href = '/game-results/';
+                    } else {
+                        showToast(`Период ${result.current_period} начался`, 'success');
+                        await this.loadState();
+                        await this.loadPeriods();
+                    }
+                } else {
+                    showToast(result.error || 'Ошибка', 'error');
+                }
+            } catch (e) {
+                showToast(e.message || 'Ошибка', 'error');
+            } finally {
+                this.processingAction = false;
+            }
+        },
+
+        formatNum(num) {
+            if (num === null || num === undefined || num === '') return '—';
+            return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(num);
+        },
+    };
+}
+</script>
+{% endblock %}

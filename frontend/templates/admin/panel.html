@@ -1,0 +1,1805 @@
+{% extends "base.html" %}
+{% block title %}Стратегема - Панель администратора{% endblock %}
+{% block nav_items %}
+<span class="text-strategem-200 text-sm">Администратор</span>
+<a
+    href="/"
+    class="hover:bg-strategem-600 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+>
+    Главная
+</a>
+<button
+    @click="logout()"
+    class="hover:bg-strategem-600 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+>
+    Выйти
+</button>
+{% endblock %}
+{% block content %}
+<div x-data="adminPanel()" x-init="init()" x-cloak>
+    <!-- Loading State -->
+    <div
+        x-show="loading"
+        class="flex items-center justify-center min-h-[400px]"
+    >
+        <div class="text-center">
+            <div
+                class="loader mx-auto mb-4"
+                style="width: 48px; height: 48px"
+            ></div>
+            <p class="text-gray-600">Загрузка...</p>
+        </div>
+    </div>
+
+    <!-- Not Authorized -->
+    <div x-show="!loading && !isAdmin" class="text-center py-16">
+        <div
+            class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4"
+        >
+            <svg
+                class="w-8 h-8 text-red-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+            >
+                <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                />
+            </svg>
+        </div>
+        <h2 class="text-xl font-bold text-gray-900 mb-2">Доступ запрещён</h2>
+        <p class="text-gray-600 mb-4">
+            Для доступа к панели администратора необходимо войти
+        </p>
+        <a
+            href="/admin-login/"
+            class="inline-block px-4 py-2 bg-strategem-600 text-white rounded-md hover:bg-strategem-700 transition-colors"
+        >
+            Войти
+        </a>
+    </div>
+
+    <!-- Admin Panel Content -->
+    <div x-show="!loading && isAdmin">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-6">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">
+                    Панель администратора
+                </h1>
+                <p class="text-gray-600">Управление играми и командами</p>
+            </div>
+            <div class="flex items-center space-x-3">
+                <button
+                    @click="openCreateFacultyModal()"
+                    class="px-4 py-2 bg-purple-600 text-white font-medium rounded-md shadow-sm hover:bg-purple-700 transition-colors flex items-center"
+                >
+                    <svg
+                        class="w-5 h-5 mr-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                        />
+                    </svg>
+                    Факультет
+                </button>
+                <button
+                    @click="openCreateGroupModal()"
+                    class="px-4 py-2 bg-blue-600 text-white font-medium rounded-md shadow-sm hover:bg-blue-700 transition-colors flex items-center"
+                >
+                    <svg
+                        class="w-5 h-5 mr-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
+                    </svg>
+                    Группа
+                </button>
+                <button
+                    @click="openCreateTeamModal()"
+                    class="px-4 py-2 bg-indigo-600 text-white font-medium rounded-md shadow-sm hover:bg-indigo-700 transition-colors flex items-center"
+                >
+                    <svg
+                        class="w-5 h-5 mr-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+                        />
+                    </svg>
+                    Команда
+                </button>
+                <button
+                    @click="openCreateModal()"
+                    class="px-4 py-2 bg-green-600 text-white font-medium rounded-md shadow-sm hover:bg-green-700 transition-colors flex items-center"
+                >
+                    <svg
+                        class="w-5 h-5 mr-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M12 4v16m8-8H4"
+                        />
+                    </svg>
+                    Создать игру
+                </button>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white rounded-lg shadow-md p-4">
+                <p class="text-sm text-gray-500">Всего игр</p>
+                <p
+                    class="text-2xl font-bold text-gray-900"
+                    x-text="games.length"
+                ></p>
+            </div>
+            <div class="bg-white rounded-lg shadow-md p-4">
+                <p class="text-sm text-gray-500">Активных</p>
+                <p
+                    class="text-2xl font-bold text-green-600"
+                    x-text="games.filter(g => g.status === 'active').length"
+                ></p>
+            </div>
+            <div class="bg-white rounded-lg shadow-md p-4">
+                <p class="text-sm text-gray-500">Завершённых</p>
+                <p
+                    class="text-2xl font-bold text-blue-600"
+                    x-text="games.filter(g => g.status === 'finished').length"
+                ></p>
+            </div>
+            <div class="bg-white rounded-lg shadow-md p-4">
+                <p class="text-sm text-gray-500">На паузе</p>
+                <p
+                    class="text-2xl font-bold text-yellow-600"
+                    x-text="games.filter(g => g.status === 'paused').length"
+                ></p>
+            </div>
+        </div>
+
+        <!-- Games Table -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div
+                class="px-4 py-3 border-b border-gray-200 flex items-center justify-between"
+            >
+                <h2 class="font-semibold text-gray-900">Игры</h2>
+                <button
+                    @click="loadGames()"
+                    class="text-strategem-600 hover:text-strategem-700 text-sm flex items-center"
+                >
+                    <svg
+                        class="w-4 h-4 mr-1"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                        />
+                    </svg>
+                    Обновить
+                </button>
+            </div>
+
+            <div
+                x-show="games.length === 0"
+                class="p-8 text-center text-gray-500"
+            >
+                <svg
+                    class="w-12 h-12 mx-auto mb-4 text-gray-300"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                >
+                    <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                    />
+                </svg>
+                <p>Нет созданных игр</p>
+                <button
+                    @click="openCreateModal()"
+                    class="mt-4 text-strategem-600 hover:underline"
+                >
+                    Создать первую игру
+                </button>
+            </div>
+
+            <div x-show="games.length > 0" class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th
+                                class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
+                            >
+                                ID
+                            </th>
+                            <th
+                                class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
+                            >
+                                Команда
+                            </th>
+                            <th
+                                class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
+                            >
+                                Группа
+                            </th>
+                            <th
+                                class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
+                            >
+                                Факультет
+                            </th>
+                            <th
+                                class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
+                            >
+                                Статус
+                            </th>
+                            <th
+                                class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
+                            >
+                                Сложность
+                            </th>
+                            <th
+                                class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
+                            >
+                                Период
+                            </th>
+                            <th
+                                class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
+                            >
+                                Создана
+                            </th>
+                            <th
+                                class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase"
+                            >
+                                Действия
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        <template x-for="game in games" :key="game.id">
+                            <tr class="hover:bg-gray-50">
+                                <td
+                                    class="px-4 py-3 text-sm text-gray-900"
+                                    x-text="game.id"
+                                ></td>
+                                <td
+                                    class="px-4 py-3 text-sm font-medium text-gray-900"
+                                    x-text="game.team_name"
+                                ></td>
+                                <td
+                                    class="px-4 py-3 text-sm text-gray-600"
+                                    x-text="game.group_name || '—'"
+                                ></td>
+                                <td
+                                    class="px-4 py-3 text-sm text-gray-600"
+                                    x-text="game.faculty_name || '—'"
+                                ></td>
+                                <td class="px-4 py-3">
+                                    <span
+                                        class="px-2 py-1 text-xs rounded-full"
+                                        :class="{
+                                              'bg-green-100 text-green-700': game.status === 'active',
+                                              'bg-blue-100 text-blue-700': game.status === 'finished',
+                                              'bg-yellow-100 text-yellow-700': game.status === 'paused',
+                                              'bg-gray-100 text-gray-700': game.status === 'created'
+                                          }"
+                                        x-text="getStatusDisplay(game.status)"
+                                    ></span>
+                                </td>
+                                <td class="px-4 py-3 text-sm text-gray-600">
+                                    <span
+                                        x-text="game.difficulty_display || getDifficultyDisplay(game.difficulty) || game.difficulty || '—'"
+                                    ></span>
+                                </td>
+                                <td class="px-4 py-3 text-sm text-gray-600">
+                                    <span x-text="game.current_period"></span> /
+                                    <span x-text="game.total_periods"></span>
+                                </td>
+                                <td
+                                    class="px-4 py-3 text-sm text-gray-600"
+                                    x-text="formatDate(game.created_at)"
+                                ></td>
+                                <td class="px-4 py-3 text-right">
+                                    <div
+                                        class="flex items-center justify-end space-x-2"
+                                    >
+                                        <a
+                                            href="#"
+                                            @click.prevent="viewGame(game)"
+                                            class="text-strategem-600 hover:text-strategem-700 p-1"
+                                            title="Просмотреть игру (только чтение)"
+                                        >
+                                            <svg
+                                                class="w-5 h-5"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                            >
+                                                <path
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                                />
+                                                <path
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                                                />
+                                            </svg>
+                                        </a>
+                                        <!-- Pause/Resume buttons -->
+                                        <button
+                                            x-show="game.status === 'active'"
+                                            @click="pauseGame(game)"
+                                            class="text-yellow-600 hover:text-yellow-700 p-1"
+                                            title="Приостановить игру"
+                                        >
+                                            <svg
+                                                class="w-5 h-5"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                            >
+                                                <path
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                    d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                                                />
+                                            </svg>
+                                        </button>
+                                        <button
+                                            x-show="game.status === 'paused'"
+                                            @click="resumeGame(game)"
+                                            class="text-green-600 hover:text-green-700 p-1"
+                                            title="Возобновить игру"
+                                        >
+                                            <svg
+                                                class="w-5 h-5"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                            >
+                                                <path
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                                                />
+                                                <path
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                    d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                                />
+                                            </svg>
+                                        </button>
+                                        <a
+                                            x-show="game.status === 'finished'"
+                                            href="#"
+                                            @click.prevent="viewResults(game)"
+                                            class="text-green-600 hover:text-green-700 p-1"
+                                            title="Посмотреть результаты"
+                                        >
+                                            <svg
+                                                class="w-5 h-5"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                            >
+                                                <path
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                    d="M8 21h8M12 17v4M5 3H3v4a4 4 0 004 4h1m10-8h2v4a4 4 0 01-4 4h-1M8 3h8v7a4 4 0 01-8 0V3z"
+                                                />
+                                            </svg>
+                                        </a>
+                                        <!-- Состояние страны -->
+                                        <a
+                                            :href="'/admin/game/' + game.id + '/status/'"
+                                            target="_blank"
+                                            class="text-teal-600 hover:text-teal-700 p-1"
+                                            title="Состояние страны"
+                                        >
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                                            </svg>
+                                        </a>
+                                        <button
+                                            @click="confirmDelete(game)"
+                                            class="text-red-600 hover:text-red-700 p-1"
+                                            title="Удалить игру"
+                                        >
+                                            <svg
+                                                class="w-5 h-5"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                            >
+                                                <path
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                                />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Teams Section -->
+        <div class="mt-6 bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="px-4 py-3 border-b border-gray-200">
+                <h2 class="font-semibold text-gray-900">
+                    Команды без активных игр
+                </h2>
+            </div>
+
+            <div
+                x-show="availableTeams.length === 0"
+                class="p-8 text-center text-gray-500"
+            >
+                <p>Все команды уже имеют активные игры</p>
+            </div>
+
+            <div x-show="availableTeams.length > 0" class="p-4">
+                <div
+                    class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+                >
+                    <template x-for="team in availableTeams" :key="team.id">
+                        <div
+                            class="border border-gray-200 rounded-lg p-4 hover:border-strategem-300 transition-colors"
+                        >
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p
+                                        class="font-medium text-gray-900"
+                                        x-text="team.name"
+                                    ></p>
+                                    <p
+                                        class="text-sm text-gray-500"
+                                        x-text="team.group_name + ' • ' + team.faculty_name"
+                                    ></p>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button
+                                        @click="confirmDeleteEntity('team', team.id, team.name)"
+                                        class="text-red-500 hover:text-red-700 p-1"
+                                        title="Удалить команду"
+                                    >
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+        <!-- Faculties, Groups & Teams Section -->
+        <div class="mt-6 bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="px-4 py-3 border-b border-gray-200">
+                <h2 class="font-semibold text-gray-900">Факультеты, группы и команды</h2>
+            </div>
+            <div x-show="faculties.length === 0" class="p-8 text-center text-gray-500">
+                <p>Факультеты не добавлены</p>
+            </div>
+            <div x-show="faculties.length > 0">
+                <!-- Поиск и фильтр -->
+                <div class="flex flex-wrap gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50">
+                    <div class="relative flex-1 min-w-[180px]">
+                        <svg class="absolute left-2.5 top-2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+                        </svg>
+                        <input
+                            x-model="treeSearch"
+                            type="text"
+                            placeholder="Поиск по названию..."
+                            class="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-strategem-400"
+                        />
+                    </div>
+                    <select
+                        x-model="treeFacultyFilter"
+                        class="text-sm border border-gray-300 rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-strategem-400 bg-white"
+                    >
+                        <option value="">Все факультеты</option>
+                        <template x-for="f in faculties" :key="f.id">
+                            <option :value="f.id" x-text="f.name"></option>
+                        </template>
+                    </select>
+                    <button
+                        x-show="treeSearch || treeFacultyFilter"
+                        @click="treeSearch = ''; treeFacultyFilter = ''"
+                        class="text-sm text-gray-500 hover:text-gray-700 px-2 py-1.5 border border-gray-300 rounded-md bg-white hover:bg-gray-50"
+                    >
+                        Сбросить
+                    </button>
+                </div>
+
+                <!-- Нет результатов -->
+                <div
+                    x-show="facultiesFiltered().length === 0"
+                    class="p-8 text-center text-gray-400 text-sm"
+                >
+                    Ничего не найдено
+                </div>
+
+                <!-- Дерево -->
+                <div class="p-4 space-y-4">
+                    <template x-for="faculty in facultiesFiltered()" :key="faculty.id">
+                        <div class="border border-gray-200 rounded-lg overflow-hidden">
+                            <!-- Faculty row -->
+                            <div class="flex items-center justify-between px-4 py-2 bg-gray-100 border-b border-gray-200">
+                                <span class="font-semibold text-gray-800" x-text="faculty.name"></span>
+                                <button
+                                    @click="confirmDeleteEntity('faculty', faculty.id, faculty.name)"
+                                    class="text-red-500 hover:text-red-700 p-1"
+                                    title="Удалить факультет"
+                                >
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    </svg>
+                                </button>
+                            </div>
+                            <!-- Groups -->
+                            <template x-for="group in groupsFiltered(faculty.id)" :key="group.id">
+                                <div>
+                                    <!-- Group row -->
+                                    <div class="flex items-center justify-between pl-6 pr-4 py-1.5 bg-gray-50 border-b border-gray-100">
+                                        <span class="text-sm font-medium text-gray-700">
+                                            <span x-text="group.name"></span>
+                                            <span class="text-gray-400 font-normal ml-1" x-text="'(' + group.year + ')'"></span>
+                                        </span>
+                                        <button
+                                            @click="confirmDeleteEntity('group', group.id, group.name)"
+                                            class="text-red-400 hover:text-red-600 p-0.5"
+                                            title="Удалить группу"
+                                        >
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <!-- Teams in this group -->
+                                    <template x-for="team in teamsFiltered(group.id)" :key="team.id">
+                                        <div class="flex items-center justify-between pl-12 pr-4 py-1 border-b border-gray-100 last:border-0 hover:bg-blue-50 transition-colors">
+                                            <span class="text-sm text-gray-600" x-text="team.name"></span>
+                                            <button
+                                                @click="confirmDeleteEntity('team', team.id, team.name)"
+                                                class="text-red-400 hover:text-red-600 p-0.5"
+                                                title="Удалить команду"
+                                            >
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </template>
+                                    <div
+                                        x-show="teamsFiltered(group.id).length === 0"
+                                        class="pl-12 pr-4 py-1 text-xs text-gray-400 border-b border-gray-100"
+                                    >
+                                        Нет команд
+                                    </div>
+                                </div>
+                            </template>
+                            <div
+                                x-show="groupsFiltered(faculty.id).length === 0"
+                                class="pl-6 pr-4 py-2 text-sm text-gray-400"
+                            >
+                                Нет групп
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- Documents Section -->
+        <div class="mt-6 bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                <h2 class="font-semibold text-gray-900">Документы для игроков</h2>
+                <button
+                    @click="openUploadDocModal()"
+                    class="px-3 py-1.5 bg-teal-600 text-white text-sm font-medium rounded-md hover:bg-teal-700 transition-colors flex items-center gap-1.5"
+                >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                    </svg>
+                    Загрузить файл
+                </button>
+            </div>
+            <div x-show="documents.length === 0" class="p-8 text-center text-gray-500">
+                <p class="text-sm">Файлы не загружены</p>
+            </div>
+            <div x-show="documents.length > 0" class="divide-y divide-gray-100">
+                <template x-for="doc in documents" :key="doc.id">
+                    <div class="px-4 py-3 flex items-center justify-between gap-3">
+                        <div class="min-w-0">
+                            <p class="font-medium text-gray-900 text-sm truncate" x-text="doc.title"></p>
+                            <p class="text-xs text-gray-500 mt-0.5">
+                                <span x-text="doc.scope === 'general' ? 'Общий' : 'Министр: ' + getMinisterLabel(doc.minister)"></span>
+                                &middot; <span x-text="doc.filename"></span>
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-2 flex-shrink-0">
+                            <a
+                                :href="doc.url"
+                                target="_blank"
+                                class="px-2.5 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
+                            >Открыть</a>
+                            <a
+                                :href="doc.url"
+                                :download="doc.filename"
+                                class="px-2.5 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+                            >Скачать</a>
+                            <button
+                                @click="deleteDocument(doc)"
+                                class="px-2.5 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                            >Удалить</button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Document Modal -->
+    <div
+        x-show="showUploadDocModal"
+        class="fixed inset-0 z-50 overflow-y-auto"
+        style="display: none"
+    >
+        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" @click="showUploadDocModal = false"></div>
+            <div class="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6 text-left">
+                <h3 class="text-lg font-bold text-gray-900 mb-4">Загрузить файл</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Файл</label>
+                        <input
+                            type="file"
+                            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+                            @change="onDocFileChange($event)"
+                            class="w-full text-sm text-gray-600 border border-gray-300 rounded-md px-3 py-2 file:mr-3 file:py-1 file:px-3 file:border-0 file:text-sm file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100"
+                        />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Название</label>
+                        <input
+                            x-model="newDoc.title"
+                            type="text"
+                            placeholder="Название документа"
+                            class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Область</label>
+                        <select x-model="newDoc.scope" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                            <option value="general">Общий (для всех)</option>
+                            <option value="minister">Для министра</option>
+                        </select>
+                    </div>
+                    <div x-show="newDoc.scope === 'minister'">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Министр</label>
+                        <select x-model="newDoc.minister" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                            <option value="">— выберите —</option>
+                            <option value="population">Население</option>
+                            <option value="energy">Энергетика</option>
+                            <option value="industry">Промышленность</option>
+                            <option value="agriculture">Сельское хозяйство</option>
+                            <option value="trade_finance">Торговля и финансы</option>
+                        </select>
+                    </div>
+                    <p x-show="uploadDocError" class="text-sm text-red-600" x-text="uploadDocError"></p>
+                </div>
+                <div class="flex justify-end gap-3 mt-5">
+                    <button @click="showUploadDocModal = false" class="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50">Отмена</button>
+                    <button
+                        @click="uploadDocument()"
+                        :disabled="uploadingDoc"
+                        class="px-4 py-2 text-sm text-white bg-teal-600 rounded-md hover:bg-teal-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                        <div x-show="uploadingDoc" class="loader" style="width:16px;height:16px"></div>
+                        <span x-text="uploadingDoc ? 'Загрузка...' : 'Загрузить'"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Entity Delete Confirmation Modal -->
+    <div
+        x-show="showEntityDeleteModal"
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        class="fixed inset-0 z-50 overflow-y-auto"
+        style="display: none"
+    >
+        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" @click="showEntityDeleteModal = false"></div>
+            <div
+                class="relative bg-white rounded-lg shadow-xl max-w-sm w-full p-6 text-left transform transition-all"
+                x-transition:enter="transition ease-out duration-300"
+                x-transition:enter-start="opacity-0 translate-y-4 sm:scale-95"
+                x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                x-transition:leave="transition ease-in duration-200"
+                x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
+                x-transition:leave-end="opacity-0 translate-y-4 sm:scale-95"
+            >
+                <div class="flex items-center mb-4">
+                    <div class="flex-shrink-0 w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                        <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5C2.57 18.333 3.532 20 5.072 20z"/>
+                        </svg>
+                    </div>
+                    <h3 class="ml-4 text-lg font-medium text-gray-900">Подтверждение удаления</h3>
+                </div>
+                <p class="text-sm text-gray-600 mb-3">
+                    Вы уверены, что хотите удалить
+                    <span x-text="entityToDelete?.type === 'faculty' ? 'факультет' : entityToDelete?.type === 'group' ? 'группу' : 'команду'"></span>
+                    <span class="font-semibold text-gray-900" x-text="entityToDelete?.name"></span>?
+                    Это действие нельзя отменить.
+                </p>
+                <div
+                    x-show="entityToDelete?.type === 'faculty'"
+                    class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-4"
+                >
+                    Вместе с факультетом будут удалены все его группы и команды.
+                </div>
+                <div
+                    x-show="entityToDelete?.type === 'group'"
+                    class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-4"
+                >
+                    Вместе с группой будут удалены все её команды.
+                </div>
+                <div class="flex justify-end gap-3">
+                    <button
+                        @click="showEntityDeleteModal = false"
+                        class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                    >
+                        Отмена
+                    </button>
+                    <button
+                        @click="deleteEntity()"
+                        :disabled="deletingEntity"
+                        class="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:bg-red-300 transition-colors"
+                    >
+                        <span x-text="deletingEntity ? 'Удаление...' : 'Удалить'"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Game Modal -->
+    <div
+        x-show="showCreateModal"
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        class="fixed inset-0 z-50 overflow-y-auto"
+        style="display: none"
+    >
+        <div
+            class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0"
+        >
+            <!-- Backdrop -->
+            <div
+                class="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+                @click="showCreateModal = false"
+            ></div>
+
+            <!-- Modal -->
+            <div
+                class="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6 text-left transform transition-all"
+                x-transition:enter="transition ease-out duration-300"
+                x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                x-transition:leave="transition ease-in duration-200"
+                x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
+                x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+            >
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-bold text-gray-900">
+                        Создать новую игру
+                    </h3>
+                    <button
+                        @click="showCreateModal = false"
+                        class="text-gray-400 hover:text-gray-600"
+                    >
+                        <svg
+                            class="w-6 h-6"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"
+                            />
+                        </svg>
+                    </button>
+                </div>
+
+                <form @submit.prevent="createGame()" class="space-y-4">
+                    <!-- Team Select -->
+                    <div>
+                        <label
+                            class="block text-sm font-medium text-gray-700 mb-2"
+                            >Команда</label
+                        >
+                        <select
+                            x-model="newGame.team"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-strategem-500 focus:border-strategem-500"
+                            required
+                        >
+                            <option value="">Выберите команду</option>
+                            <template
+                                x-for="team in availableTeams"
+                                :key="team.id"
+                            >
+                                <option
+                                    :value="team.id"
+                                    x-text="team.name + ' (' + team.group_name + ')'"
+                                ></option>
+                            </template>
+                        </select>
+                        <p
+                            x-show="availableTeams.length === 0"
+                            class="mt-1 text-sm text-yellow-600"
+                        >
+                            Нет доступных команд. Все команды уже имеют активные
+                            игры.
+                        </p>
+                    </div>
+
+                    <!-- Difficulty Select -->
+                    <div>
+                        <label
+                            class="block text-sm font-medium text-gray-700 mb-2"
+                            >Сложность</label
+                        >
+                        <select
+                            x-model="newGame.difficulty"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-strategem-500 focus:border-strategem-500"
+                            required
+                        >
+                            <option value="simple">Simple</option>
+                            <option value="standard">Standard</option>
+                            <option value="tough">Tough</option>
+                            <option value="veryhard">Very hard</option>
+                            <option value="higheq">High EQ</option>
+                        </select>
+                    </div>
+
+                    <!-- Periods Select -->
+                    <div>
+                        <label
+                            class="block text-sm font-medium text-gray-700 mb-2"
+                            >Количество периодов</label
+                        >
+                        <select
+                            x-model="newGame.total_periods"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-strategem-500 focus:border-strategem-500"
+                            required
+                        >
+                            <option value="10">10 периодов</option>
+                            <option value="15">15 периодов</option>
+                        </select>
+                    </div>
+
+                    <!-- Error Message -->
+                    <div
+                        x-show="createError"
+                        class="bg-red-50 border border-red-200 rounded-md p-3"
+                    >
+                        <p
+                            class="text-red-700 text-sm"
+                            x-text="createError"
+                        ></p>
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="flex justify-end space-x-3 pt-4">
+                        <button
+                            type="button"
+                            @click="showCreateModal = false"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+                        >
+                            Отмена
+                        </button>
+                        <button
+                            type="submit"
+                            :disabled="!newGame.team || creatingGame"
+                            class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center"
+                        >
+                            <template x-if="creatingGame">
+                                <div
+                                    class="loader mr-2"
+                                    style="width: 16px; height: 16px"
+                                ></div>
+                            </template>
+                            <span
+                                x-text="creatingGame ? 'Создание...' : 'Создать'"
+                            ></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div
+        x-show="showDeleteModal"
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        class="fixed inset-0 z-50 overflow-y-auto"
+        style="display: none"
+    >
+        <div
+            class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0"
+        >
+            <!-- Backdrop -->
+            <div
+                class="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+                @click="showDeleteModal = false"
+            ></div>
+
+            <!-- Modal -->
+            <div
+                class="relative bg-white rounded-lg shadow-xl max-w-sm w-full p-6 text-left"
+            >
+                <div class="flex items-center mb-4">
+                    <div
+                        class="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mr-3"
+                    >
+                        <svg
+                            class="w-6 h-6 text-red-600"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                            />
+                        </svg>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-900">
+                        Удалить игру?
+                    </h3>
+                </div>
+
+                <p class="text-gray-600 mb-4">
+                    Вы уверены, что хотите удалить игру для команды
+                    <span
+                        class="font-medium"
+                        x-text="gameToDelete?.team_name"
+                    ></span
+                    >? Это действие нельзя отменить.
+                </p>
+
+                <div class="flex justify-end space-x-3">
+                    <button
+                        @click="showDeleteModal = false"
+                        class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                        Отмена
+                    </button>
+                    <button
+                        @click="deleteGame()"
+                        :disabled="deletingGame"
+                        class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center"
+                    >
+                        <template x-if="deletingGame">
+                            <div
+                                class="loader mr-2"
+                                style="width: 16px; height: 16px"
+                            ></div>
+                        </template>
+                        <span
+                            x-text="deletingGame ? 'Удаление...' : 'Удалить'"
+                        ></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Faculty Modal -->
+    <div
+        x-show="showCreateFacultyModal"
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        class="fixed inset-0 z-50 overflow-y-auto"
+        style="display: none"
+    >
+        <div
+            class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0"
+        >
+            <div
+                class="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+                @click="showCreateFacultyModal = false"
+            ></div>
+            <div
+                class="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6 text-left transform transition-all"
+            >
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-bold text-gray-900">
+                        Создать новый факультет
+                    </h3>
+                    <button
+                        @click="showCreateFacultyModal = false"
+                        class="text-gray-400 hover:text-gray-600"
+                    >
+                        <svg
+                            class="w-6 h-6"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"
+                            />
+                        </svg>
+                    </button>
+                </div>
+                <form @submit.prevent="createFaculty()" class="space-y-4">
+                    <div>
+                        <label
+                            class="block text-sm font-medium text-gray-700 mb-2"
+                            >Название факультета</label
+                        >
+                        <input
+                            type="text"
+                            x-model="newFaculty.name"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-strategem-500 focus:border-strategem-500"
+                            placeholder="Например: Факультет информатики"
+                            required
+                        />
+                    </div>
+                    <div
+                        x-show="createFacultyError"
+                        class="bg-red-50 border border-red-200 rounded-md p-3"
+                    >
+                        <p
+                            class="text-red-700 text-sm"
+                            x-text="createFacultyError"
+                        ></p>
+                    </div>
+                    <div class="flex justify-end space-x-3 pt-4">
+                        <button
+                            type="button"
+                            @click="showCreateFacultyModal = false"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+                        >
+                            Отмена
+                        </button>
+                        <button
+                            type="submit"
+                            :disabled="!newFaculty.name || creatingFaculty"
+                            class="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <span
+                                x-text="creatingFaculty ? 'Создание...' : 'Создать'"
+                            ></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Group Modal -->
+    <div
+        x-show="showCreateGroupModal"
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        class="fixed inset-0 z-50 overflow-y-auto"
+        style="display: none"
+    >
+        <div
+            class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0"
+        >
+            <div
+                class="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+                @click="showCreateGroupModal = false"
+            ></div>
+            <div
+                class="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6 text-left transform transition-all"
+            >
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-bold text-gray-900">
+                        Создать новую группу
+                    </h3>
+                    <button
+                        @click="showCreateGroupModal = false"
+                        class="text-gray-400 hover:text-gray-600"
+                    >
+                        <svg
+                            class="w-6 h-6"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"
+                            />
+                        </svg>
+                    </button>
+                </div>
+                <form @submit.prevent="createGroup()" class="space-y-4">
+                    <div>
+                        <label
+                            class="block text-sm font-medium text-gray-700 mb-2"
+                            >Факультет</label
+                        >
+                        <select
+                            x-model="newGroup.faculty"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-strategem-500 focus:border-strategem-500"
+                            required
+                        >
+                            <option value="">Выберите факультет</option>
+                            <template
+                                x-for="faculty in faculties"
+                                :key="faculty.id"
+                            >
+                                <option
+                                    :value="faculty.id"
+                                    x-text="faculty.name"
+                                ></option>
+                            </template>
+                        </select>
+                        <p
+                            x-show="faculties.length === 0"
+                            class="mt-1 text-sm text-yellow-600"
+                        >
+                            Сначала создайте факультет
+                        </p>
+                    </div>
+                    <div>
+                        <label
+                            class="block text-sm font-medium text-gray-700 mb-2"
+                            >Название группы</label
+                        >
+                        <input
+                            type="text"
+                            x-model="newGroup.name"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-strategem-500 focus:border-strategem-500"
+                            placeholder="Например: ИВТ-101"
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label
+                            class="block text-sm font-medium text-gray-700 mb-2"
+                            >Год</label
+                        >
+                        <input
+                            type="number"
+                            x-model="newGroup.year"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-strategem-500 focus:border-strategem-500"
+                            :placeholder="new Date().getFullYear()"
+                            required
+                        />
+                    </div>
+                    <div
+                        x-show="createGroupError"
+                        class="bg-red-50 border border-red-200 rounded-md p-3"
+                    >
+                        <p
+                            class="text-red-700 text-sm"
+                            x-text="createGroupError"
+                        ></p>
+                    </div>
+                    <div class="flex justify-end space-x-3 pt-4">
+                        <button
+                            type="button"
+                            @click="showCreateGroupModal = false"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+                        >
+                            Отмена
+                        </button>
+                        <button
+                            type="submit"
+                            :disabled="!newGroup.faculty || !newGroup.name || creatingGroup"
+                            class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <span
+                                x-text="creatingGroup ? 'Создание...' : 'Создать'"
+                            ></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Team Modal -->
+    <div
+        x-show="showCreateTeamModal"
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        class="fixed inset-0 z-50 overflow-y-auto"
+        style="display: none"
+    >
+        <div
+            class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0"
+        >
+            <div
+                class="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+                @click="showCreateTeamModal = false"
+            ></div>
+            <div
+                class="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6 text-left transform transition-all"
+            >
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-bold text-gray-900">
+                        Создать новую команду
+                    </h3>
+                    <button
+                        @click="showCreateTeamModal = false"
+                        class="text-gray-400 hover:text-gray-600"
+                    >
+                        <svg
+                            class="w-6 h-6"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"
+                            />
+                        </svg>
+                    </button>
+                </div>
+                <form @submit.prevent="createTeam()" class="space-y-4">
+                    <div>
+                        <label
+                            class="block text-sm font-medium text-gray-700 mb-2"
+                            >Группа</label
+                        >
+                        <select
+                            x-model="newTeam.group"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-strategem-500 focus:border-strategem-500"
+                            required
+                        >
+                            <option value="">Выберите группу</option>
+                            <template x-for="group in groups" :key="group.id">
+                                <option
+                                    :value="group.id"
+                                    x-text="group.name + ' (' + group.faculty_name + ', ' + group.year + ')'"
+                                ></option>
+                            </template>
+                        </select>
+                        <p
+                            x-show="groups.length === 0"
+                            class="mt-1 text-sm text-yellow-600"
+                        >
+                            Сначала создайте группу
+                        </p>
+                    </div>
+                    <div>
+                        <label
+                            class="block text-sm font-medium text-gray-700 mb-2"
+                            >Название команды</label
+                        >
+                        <input
+                            type="text"
+                            x-model="newTeam.name"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-strategem-500 focus:border-strategem-500"
+                            placeholder="Например: Команда 1"
+                            required
+                        />
+                    </div>
+                    <div
+                        x-show="createTeamError"
+                        class="bg-red-50 border border-red-200 rounded-md p-3"
+                    >
+                        <p
+                            class="text-red-700 text-sm"
+                            x-text="createTeamError"
+                        ></p>
+                    </div>
+                    <div class="flex justify-end space-x-3 pt-4">
+                        <button
+                            type="button"
+                            @click="showCreateTeamModal = false"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+                        >
+                            Отмена
+                        </button>
+                        <button
+                            type="submit"
+                            :disabled="!newTeam.group || !newTeam.name || creatingTeam"
+                            class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <span
+                                x-text="creatingTeam ? 'Создание...' : 'Создать'"
+                            ></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} {% block extra_scripts %}
+<script>
+    function adminPanel() {
+        return {
+            // State
+            loading: true,
+            isAdmin: false,
+            games: [],
+            teams: [],
+            faculties: [],
+            groups: [],
+
+            // Modal state
+            showCreateModal: false,
+            showDeleteModal: false,
+            showCreateFacultyModal: false,
+            showCreateGroupModal: false,
+            showCreateTeamModal: false,
+
+            // Form state
+            newGame: {
+                team: "",
+                difficulty: "standard",
+                total_periods: 10,
+            },
+            creatingGame: false,
+            createError: null,
+
+            // Faculty form state
+            newFaculty: { name: "" },
+            creatingFaculty: false,
+            createFacultyError: null,
+
+            // Group form state
+            newGroup: { name: "", faculty: "", year: new Date().getFullYear() },
+            creatingGroup: false,
+            createGroupError: null,
+
+            // Team form state
+            newTeam: { name: "", group: "" },
+            creatingTeam: false,
+            createTeamError: null,
+
+            // Delete state (игры)
+            gameToDelete: null,
+            deletingGame: false,
+
+            // Delete state (факультеты / группы / команды)
+            entityToDelete: null,
+            showEntityDeleteModal: false,
+            deletingEntity: false,
+
+            // Поиск и фильтрация дерева
+            treeSearch: '',
+            treeFacultyFilter: '',
+
+            facultiesFiltered() {
+                return this.faculties.filter(f => {
+                    if (this.treeFacultyFilter && f.id !== parseInt(this.treeFacultyFilter)) return false;
+                    if (!this.treeSearch.trim()) return true;
+                    const q = this.treeSearch.trim().toLowerCase();
+                    if (f.name.toLowerCase().includes(q)) return true;
+                    return this.groupsFiltered(f.id).length > 0;
+                });
+            },
+            groupsFiltered(facultyId) {
+                const q = this.treeSearch.trim().toLowerCase();
+                return this.groups.filter(g => {
+                    if (g.faculty !== facultyId) return false;
+                    if (!q) return true;
+                    if (g.name.toLowerCase().includes(q)) return true;
+                    return this.teamsFiltered(g.id).length > 0;
+                });
+            },
+            teamsFiltered(groupId) {
+                const q = this.treeSearch.trim().toLowerCase();
+                return this.teams.filter(t => {
+                    if (t.group !== groupId) return false;
+                    if (!q) return true;
+                    return t.name.toLowerCase().includes(q);
+                });
+            },
+
+            // Computed
+            get availableTeams() {
+                const teamsWithGames = new Set(this.games.map((g) => g.team));
+                return this.teams.filter((t) => !teamsWithGames.has(t.id));
+            },
+
+            // Lifecycle
+            async init() {
+                await this.checkAdmin();
+                if (this.isAdmin) {
+                    await Promise.all([
+                        this.loadGames(),
+                        this.loadTeams(),
+                        this.loadFaculties(),
+                        this.loadGroups(),
+                    ]);
+                }
+                this.loading = false;
+            },
+
+            // Methods
+            async checkAdmin() {
+                try {
+                    const response = await API.get("/admin/check/");
+                    this.isAdmin = response.is_admin;
+                } catch (e) {
+                    this.isAdmin = false;
+                }
+            },
+
+            async loadGames() {
+                try {
+                    this.games = await API.get("/games/");
+                } catch (e) {
+                    showToast("Ошибка загрузки игр: " + e.message, "error");
+                }
+            },
+
+            async loadTeams() {
+                try {
+                    this.teams = await API.get("/teams/");
+                } catch (e) {
+                    showToast("Ошибка загрузки команд: " + e.message, "error");
+                }
+            },
+
+            async loadFaculties() {
+                try {
+                    this.faculties = await API.get("/faculties/");
+                } catch (e) {
+                    showToast(
+                        "Ошибка загрузки факультетов: " + e.message,
+                        "error",
+                    );
+                }
+            },
+
+            async loadGroups() {
+                try {
+                    this.groups = await API.get("/groups/");
+                } catch (e) {
+                    showToast("Ошибка загрузки групп: " + e.message, "error");
+                }
+            },
+
+            openCreateModal() {
+                this.newGame = {
+                    team: "",
+                    difficulty: "standard",
+                    total_periods: 10,
+                };
+                this.createError = null;
+                this.showCreateModal = true;
+            },
+
+            async createGame() {
+                if (!this.newGame.team) return;
+
+                this.creatingGame = true;
+                this.createError = null;
+
+                try {
+                    await API.post("/games/", {
+                        team: parseInt(this.newGame.team),
+                        difficulty: this.newGame.difficulty,
+                        total_periods: parseInt(this.newGame.total_periods),
+                    });
+
+                    showToast("Игра успешно создана", "success");
+                    this.showCreateModal = false;
+                    await this.loadGames();
+                } catch (e) {
+                    this.createError = e.message;
+                } finally {
+                    this.creatingGame = false;
+                }
+            },
+
+            getDifficultyDisplay(difficulty) {
+                const labels = {
+                    simple: "Simple",
+                    standard: "Standard",
+                    tough: "Tough",
+                    veryhard: "Very hard",
+                    higheq: "High EQ",
+                };
+                return labels[difficulty] || difficulty || "—";
+            },
+
+            // Pause/Resume methods
+            async pauseGame(game) {
+                try {
+                    await API.post(`/games/${game.id}/pause/`);
+                    showToast("Игра приостановлена", "success");
+                    await this.loadGames();
+                } catch (e) {
+                    showToast("Ошибка: " + e.message, "error");
+                }
+            },
+
+            async resumeGame(game) {
+                try {
+                    await API.post(`/games/${game.id}/resume/`);
+                    showToast("Игра возобновлена", "success");
+                    await this.loadGames();
+                } catch (e) {
+                    showToast("Ошибка: " + e.message, "error");
+                }
+            },
+
+            viewGame(game) {
+                // Set view-only mode flag
+                localStorage.setItem("strategem_view_only", "true");
+                localStorage.setItem("strategem_game", game.id);
+                localStorage.setItem("strategem_team_name", game.team_name);
+                window.location.href = "/game/";
+            },
+
+            viewResults(game) {
+                // View results for finished game
+                localStorage.setItem("strategem_game", game.id);
+                localStorage.setItem("strategem_team_name", game.team_name);
+                localStorage.removeItem("strategem_view_only");
+                window.location.href = "/game-results/";
+            },
+
+            confirmDelete(game) {
+                this.gameToDelete = game;
+                this.showDeleteModal = true;
+            },
+
+            async deleteGame() {
+                if (!this.gameToDelete) return;
+
+                this.deletingGame = true;
+
+                try {
+                    await API.delete(`/games/${this.gameToDelete.id}/`);
+                    showToast("Игра удалена", "success");
+                    this.showDeleteModal = false;
+                    this.gameToDelete = null;
+                    await this.loadGames();
+                } catch (e) {
+                    showToast("Ошибка удаления: " + e.message, "error");
+                } finally {
+                    this.deletingGame = false;
+                }
+            },
+
+            confirmDeleteEntity(type, id, name) {
+                this.entityToDelete = { type, id, name };
+                this.showEntityDeleteModal = true;
+            },
+
+            async deleteEntity() {
+                if (!this.entityToDelete) return;
+                this.deletingEntity = true;
+                const { type, id } = this.entityToDelete;
+                const urls = { faculty: `/faculties/${id}/`, group: `/groups/${id}/`, team: `/teams/${id}/` };
+                const labels = { faculty: 'Факультет', group: 'Группа', team: 'Команда' };
+                try {
+                    await API.delete(urls[type]);
+                    showToast(labels[type] + ' удалён', 'success');
+                    this.showEntityDeleteModal = false;
+                    this.entityToDelete = null;
+                    await Promise.all([this.loadFaculties(), this.loadGroups(), this.loadTeams()]);
+                } catch (e) {
+                    showToast('Ошибка удаления: ' + e.message, 'error');
+                } finally {
+                    this.deletingEntity = false;
+                }
+            },
+
+            async logout() {
+                try {
+                    await API.post("/admin/logout/");
+                    showToast("Выход выполнен", "success");
+                    window.location.href = "/";
+                } catch (e) {
+                    showToast("Ошибка выхода: " + e.message, "error");
+                }
+            },
+
+            // Faculty methods
+            openCreateFacultyModal() {
+                this.newFaculty = { name: "" };
+                this.createFacultyError = null;
+                this.showCreateFacultyModal = true;
+            },
+
+            async createFaculty() {
+                if (!this.newFaculty.name) return;
+                this.creatingFaculty = true;
+                this.createFacultyError = null;
+
+                try {
+                    await API.post("/faculties/", {
+                        name: this.newFaculty.name,
+                    });
+                    showToast("Факультет создан", "success");
+                    this.showCreateFacultyModal = false;
+                    await this.loadFaculties();
+                } catch (e) {
+                    this.createFacultyError = e.message;
+                } finally {
+                    this.creatingFaculty = false;
+                }
+            },
+
+            // Group methods
+            openCreateGroupModal() {
+                this.newGroup = {
+                    name: "",
+                    faculty: "",
+                    year: new Date().getFullYear(),
+                };
+                this.createGroupError = null;
+                this.showCreateGroupModal = true;
+            },
+
+            async createGroup() {
+                if (!this.newGroup.faculty || !this.newGroup.name) return;
+                this.creatingGroup = true;
+                this.createGroupError = null;
+
+                try {
+                    await API.post("/groups/", {
+                        name: this.newGroup.name,
+                        faculty: parseInt(this.newGroup.faculty),
+                        year: parseInt(this.newGroup.year),
+                    });
+                    showToast("Группа создана", "success");
+                    this.showCreateGroupModal = false;
+                    await Promise.all([this.loadGroups(), this.loadTeams()]);
+                } catch (e) {
+                    this.createGroupError = e.message;
+                } finally {
+                    this.creatingGroup = false;
+                }
+            },
+
+            // Team methods
+            openCreateTeamModal() {
+                this.newTeam = { name: "", group: "" };
+                this.createTeamError = null;
+                this.showCreateTeamModal = true;
+            },
+
+            async createTeam() {
+                if (!this.newTeam.group || !this.newTeam.name) return;
+                this.creatingTeam = true;
+                this.createTeamError = null;
+
+                try {
+                    await API.post("/teams/", {
+                        name: this.newTeam.name,
+                        group: parseInt(this.newTeam.group),
+                    });
+                    showToast("Команда создана", "success");
+                    this.showCreateTeamModal = false;
+                    await this.loadTeams();
+                } catch (e) {
+                    this.createTeamError = e.message;
+                } finally {
+                    this.creatingTeam = false;
+                }
+            },
+
+            // Helpers
+            getStatusDisplay(status) {
+                const statuses = {
+                    created: "Создана",
+                    active: "Активна",
+                    paused: "Пауза",
+                    finished: "Завершена",
+                };
+                return statuses[status] || status;
+            },
+
+            formatDate(dateStr) {
+                if (!dateStr) return "—";
+                const date = new Date(dateStr);
+                return date.toLocaleDateString("ru-RU", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                });
+            },
+        };
+    }
+</script>
+{% endblock %}

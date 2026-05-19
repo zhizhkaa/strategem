@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+{% block title %}
+Стратегема - Выбор команды
+{% endblock%}
+{% block content %}
+<div x-data="teamSelection()" x-init="init()" class="max-w-2xl mx-auto">
+    <!-- Header -->
+    <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 mb-2">
+            Добро пожаловать в Стратегему
+        </h1>
+        <p class="text-gray-600">Выберите вашу команду для начала игры</p>
+    </div>
+
+    <!-- Selection Form -->
+    <div class="bg-white rounded-lg shadow-md p-6 space-y-6">
+        <!-- Faculty Selection -->
+        <div>
+            <label
+                for="faculty"
+                class="block text-sm font-medium text-gray-700 mb-2"
+            >
+                Факультет
+            </label>
+            <select
+                id="faculty"
+                x-model="selectedFaculty"
+                @change="onFacultyChange()"
+                :disabled="loading"
+                class="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-strategem-500 focus:border-strategem-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+            >
+                <option value="">Выберите факультет</option>
+                <template x-for="faculty in faculties" :key="faculty.id">
+                    <option :value="faculty.id" x-text="faculty.name"></option>
+                </template>
+            </select>
+        </div>
+
+        <!-- Group Selection -->
+        <div>
+            <label
+                for="group"
+                class="block text-sm font-medium text-gray-700 mb-2"
+            >
+                Группа
+            </label>
+            <select
+                id="group"
+                x-model="selectedGroup"
+                @change="onGroupChange()"
+                :disabled="!selectedFaculty || loading"
+                class="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-strategem-500 focus:border-strategem-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+            >
+                <option value="">Выберите группу</option>
+                <template x-for="group in filteredGroups" :key="group.id">
+                    <option
+                        :value="group.id"
+                        x-text="`${group.name} (${group.year})`"
+                    ></option>
+                </template>
+            </select>
+        </div>
+
+        <!-- Team Selection -->
+        <div>
+            <label
+                for="team"
+                class="block text-sm font-medium text-gray-700 mb-2"
+            >
+                Команда
+            </label>
+            <select
+                id="team"
+                x-model="selectedTeam"
+                @change="onTeamChange()"
+                :disabled="!selectedGroup || loading"
+                class="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-strategem-500 focus:border-strategem-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+            >
+                <option value="">Выберите команду</option>
+                <template x-for="team in filteredTeams" :key="team.id">
+                    <option :value="team.id">
+                        <span x-text="team.name"></span>
+                        <span x-show="team.has_active_game"> (есть игра)</span>
+                    </option>
+                </template>
+            </select>
+        </div>
+
+        <!-- Team Info -->
+        <div
+            x-show="selectedTeamData"
+            x-cloak
+            class="bg-gray-50 rounded-md p-4"
+        >
+            <h3 class="font-medium text-gray-900 mb-2">Информация о команде</h3>
+            <div class="text-sm text-gray-600 space-y-1">
+                <p>
+                    <span class="font-medium">Команда:</span>
+                    <span x-text="selectedTeamData?.name"></span>
+                </p>
+                <p>
+                    <span class="font-medium">Группа:</span>
+                    <span x-text="selectedTeamData?.group_name"></span>
+                </p>
+                <p>
+                    <span class="font-medium">Факультет:</span>
+                    <span x-text="selectedTeamData?.faculty_name"></span>
+                </p>
+                <p
+                    x-show="selectedTeamData?.has_active_game"
+                    class="text-green-600 font-medium"
+                >
+                    ✓ У команды есть активная игра
+                </p>
+                <p
+                    x-show="!selectedTeamData?.has_active_game"
+                    class="text-yellow-600"
+                >
+                    ⚠ У команды нет активной игры. Обратитесь к администратору.
+                </p>
+            </div>
+        </div>
+
+        <!-- Error Message -->
+        <div
+            x-show="error"
+            x-cloak
+            class="bg-red-50 border border-red-200 rounded-md p-4"
+        >
+            <p class="text-red-700 text-sm" x-text="error"></p>
+        </div>
+
+        <!-- Submit Button -->
+        <button
+            @click="enterGame()"
+            :disabled="!canEnterGame || loading"
+            class="w-full py-3 px-4 bg-strategem-600 text-white font-medium rounded-md shadow-sm hover:bg-strategem-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-strategem-500 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+        >
+            <template x-if="loading">
+                <div class="loader mr-2"></div>
+            </template>
+            <span x-text="loading ? 'Загрузка...' : 'Войти в игру'"></span>
+        </button>
+    </div>
+</div>
+{% endblock %} {% block extra_scripts %}
+<script>
+    function teamSelection() {
+        return {
+            // Data
+            faculties: [],
+            groups: [],
+            teams: [],
+
+            // Selected values
+            selectedFaculty: "",
+            selectedGroup: "",
+            selectedTeam: "",
+
+            // State
+            loading: false,
+            error: null,
+
+            // Computed
+            get filteredGroups() {
+                if (!this.selectedFaculty) return [];
+                return this.groups.filter(
+                    (g) => g.faculty == this.selectedFaculty,
+                );
+            },
+
+            get filteredTeams() {
+                if (!this.selectedGroup) return [];
+                return this.teams.filter((t) => t.group == this.selectedGroup);
+            },
+
+            get selectedTeamData() {
+                if (!this.selectedTeam) return null;
+                return this.teams.find((t) => t.id == this.selectedTeam);
+            },
+
+            get canEnterGame() {
+                return (
+                    this.selectedTeam && this.selectedTeamData?.has_active_game
+                );
+            },
+
+            // Methods
+            async init() {
+                this.loading = true;
+                try {
+                    // Load all data in parallel
+                    const [facultiesRes, groupsRes, teamsRes] =
+                        await Promise.all([
+                            API.get("/faculties/"),
+                            API.get("/groups/"),
+                            API.get("/teams/"),
+                        ]);
+
+                    this.faculties = facultiesRes;
+                    this.groups = groupsRes;
+                    this.teams = teamsRes;
+
+                    // Restore previous selection from localStorage
+                    const savedTeam = localStorage.getItem("strategem_team");
+                    if (savedTeam) {
+                        const team = this.teams.find((t) => t.id == savedTeam);
+                        if (team) {
+                            const group = this.groups.find(
+                                (g) => g.id == team.group,
+                            );
+                            if (group) {
+                                this.selectedFaculty = group.faculty;
+                                this.selectedGroup = group.id;
+                                this.selectedTeam = team.id;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    this.error = "Ошибка загрузки данных: " + e.message;
+                    showToast("Ошибка загрузки данных", "error");
+                } finally {
+                    this.loading = false;
+                }
+            },
+
+            onFacultyChange() {
+                this.selectedGroup = "";
+                this.selectedTeam = "";
+            },
+
+            onGroupChange() {
+                this.selectedTeam = "";
+            },
+
+            onTeamChange() {
+                this.error = null;
+            },
+
+            async enterGame() {
+                if (!this.canEnterGame) return;
+
+                this.loading = true;
+                this.error = null;
+
+                try {
+                    // Save selection
+                    localStorage.setItem("strategem_team", this.selectedTeam);
+                    localStorage.setItem(
+                        "strategem_team_name",
+                        this.selectedTeamData?.name || "",
+                    );
+                    // Clear view-only mode (player is entering their own game)
+                    localStorage.removeItem("strategem_view_only");
+
+                    // Check if team has active game
+                    const response = await API.get(
+                        `/teams/${this.selectedTeam}/game/`,
+                    );
+
+                    if (response.game) {
+                        localStorage.setItem(
+                            "strategem_game",
+                            response.game.id,
+                        );
+                        window.location.href = "/game/";
+                    } else {
+                        this.error =
+                            "У команды нет активной игры. Обратитесь к администратору.";
+                    }
+                } catch (e) {
+                    this.error = "Ошибка: " + e.message;
+                    showToast("Ошибка входа в игру", "error");
+                } finally {
+                    this.loading = false;
+                }
+            },
+        };
+    }
+</script>
+{% endblock %}

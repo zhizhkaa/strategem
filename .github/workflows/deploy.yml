@@ -1,0 +1,54 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: true
+
+    steps:
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -euo pipefail
+
+            cd /opt/strategem
+
+            git fetch origin main
+            git checkout main
+            git pull --ff-only origin main
+
+            if docker compose version >/dev/null 2>&1; then
+              COMPOSE="docker compose"
+            else
+              COMPOSE="docker-compose"
+            fi
+
+            $COMPOSE build web
+            $COMPOSE up -d db
+
+            until $COMPOSE exec -T db sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'; do
+              sleep 2
+            done
+
+            $COMPOSE up -d --remove-orphans
+
+            $COMPOSE exec -T web python manage.py migrate --noinput
+            $COMPOSE exec -T web python manage.py collectstatic --noinput --clear
+            $COMPOSE exec -T web python manage.py check --deploy
+
+            $COMPOSE ps
+
+            docker image prune -f
+
+            echo "Deployment completed successfully!"

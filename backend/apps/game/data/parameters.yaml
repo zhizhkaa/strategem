@@ -1,0 +1,564 @@
+# Параметры игры Стратегема
+# Каждый параметр содержит:
+#   - default: значение по умолчанию
+#   - verbose_name: название
+#   - category: категория (population, energy, industry, agriculture, trade)
+#   - is_input: является ли параметр вводимым пользователем
+#   - min: минимальное значение (для input параметров)
+#   - max: максимальное значение или формула (для input параметров)
+#   - depends_on: от каких параметров зависит max (для динамических границ)
+
+population:
+  P1:
+    default: 200
+    verbose_name: "Численность населения"
+    is_input: false
+
+  P2:
+    default: 3300
+    verbose_name: "Всего продовольствия"
+    is_input: false
+
+  P3:
+    default: 3500
+    verbose_name: "Всего товаров"
+    is_input: false
+
+  P4:
+    default: 2
+    verbose_name: "Продовольствие на душу населения"
+    is_input: false
+
+  P5:
+    default: 18
+    verbose_name: "Уровень смертности"
+    is_input: false
+
+  P6:
+    default: 2
+    verbose_name: "Товары на душу населения"
+    is_input: false
+
+  P7:
+    default: 2.25
+    verbose_name: "Услуги на душу населения"
+    is_input: false
+
+  P8:
+    default: 41
+    verbose_name: "Уровень рождаемости"
+    is_input: false
+
+  P9:
+    default: 0
+    verbose_name: "Продовольствие для населения"
+    is_input: true
+    min: 0
+    max: "min(P2, P1 * 25)"
+    depends_on: ["P1", "P2"]
+    decision_group: "food_distribution"
+
+  P10:
+    default: 0
+    verbose_name: "Продовольствие на экспорт"
+    is_input: true
+    # Рассчитывается как P2 - P9
+
+  P11:
+    default: 0
+    verbose_name: "Товары для населения"
+    is_input: true
+    min: 0
+    max: "min(P3, P1 * 75)"
+    depends_on: ["P3", "P1"]
+    decision_group: "goods_distribution"
+
+  P12:
+    default: 0
+    verbose_name: "Товары для капиталовложения"
+    is_input: true
+    min: 0
+    max: "P3 - P11"
+    depends_on: ["P3", "P11"]
+    decision_group: "goods_distribution"
+
+  P13:
+    default: 0
+    verbose_name: "Товары на экспорт"
+    is_input: true
+    # Рассчитывается как P3 - P11 - P12
+
+energy:
+  E1:
+    default: 160
+    verbose_name: "Выбытие капитала для энергии"
+    is_input: false
+
+  E2:
+    default: 640
+    verbose_name: "Новый капитал для энергии"
+    is_input: false
+
+  E3:
+    default: 800
+    verbose_name: "Основной капитал для энергии"
+    is_input: false
+
+  E4:
+    default: 0
+    verbose_name: "Выбытие капитала энергосбережения"
+    is_input: false
+
+  E5:
+    default: 0
+    verbose_name: "Новый капитал энергосбережения"
+    is_input: false
+
+  E6:
+    default: 0
+    verbose_name: "Основной капитал энергосбережения"
+    is_input: false
+
+  E7:
+    default: 15000
+    verbose_name: "Всего энергоресурсов"
+    is_input: false
+
+  E8:
+    default: 0.2
+    verbose_name: "Энергоресурсы на единицу товаров"
+    is_input: false
+
+  E9:
+    default: 400
+    verbose_name: "Энергоресурсы для населения"
+    is_input: false
+
+  E10:
+    default: 1.0
+    verbose_name: "Коэффициент потребления ресурсов"
+    is_input: false
+
+  E11:
+    default: 12.5
+    verbose_name: "Энергоресурсы на единицу с/х капитала"
+    is_input: false
+
+  E12:
+    default: 10000
+    verbose_name: "Потребность в энергии для сельского хозяйства"
+    is_input: false
+
+  E13:
+    default: 20
+    verbose_name: "Энергоресурсы на единицу пром. капитала"
+    is_input: false
+
+  E14:
+    default: 6000
+    verbose_name: "Потребность в энергии для производства товаров"
+    is_input: false
+
+  E15:
+    default: 16000
+    verbose_name: "Потребность в энергии для с/х и пром. производства"
+    is_input: false
+
+  E16:
+    default: 17.5
+    verbose_name: "Генерация энергии на единицу капитала в энергетике"
+    is_input: false
+
+  E17:
+    default: 14000
+    verbose_name: "Производство энергоресурсов"
+    is_input: false
+
+  E18:
+    default: 0
+    verbose_name: "Энергоресурсы на экспорт (из прошлого периода)"
+    is_input: false
+
+  E19:
+    default: 1000
+    verbose_name: "Импорт энергоресурсов"
+    is_input: false
+
+  E20:
+    default: 0
+    verbose_name: "Энергоресурсы для населения"
+    is_input: true
+    min: "P11 / 5"
+    max: "P11 / 5"
+    depends_on: ["P11"]
+    decision_group: "energy_distribution"
+    # Фиксированное значение = P11 / 5
+
+  E21:
+    default: 0
+    verbose_name: "Энергоресурсы на экспорт"
+    is_input: true
+    min: 0
+    max: "E7 - E20"
+    depends_on: ["E7", "E20"]
+    decision_group: "energy_distribution"
+
+  E22:
+    default: 0
+    verbose_name: "Энергоресурсы в резерв"
+    is_input: true
+    min: 0
+    max: "E7 - E20 - E21"
+    depends_on: ["E7", "E20", "E21"]
+    decision_group: "energy_distribution"
+
+  E23:
+    default: 0
+    verbose_name: "Энергоресурсы для производства товаров и продовольствия"
+    is_input: true
+    # Рассчитывается как E7 - E20 - E21 - E22
+
+  E24:
+    default: 0
+    verbose_name: "Энергоресурсы для производства продовольствия"
+    is_input: true
+    min: 0
+    max: "E23"
+    depends_on: ["E23"]
+    decision_group: "energy_production"
+
+  E25:
+    default: 0
+    verbose_name: "Энергоресурсы для производства товаров"
+    is_input: true
+    # Рассчитывается как E23 - E24
+
+  E26:
+    default: 0
+    verbose_name: "Капиталовложения в генерацию энергии"
+    is_input: true
+    min: 0
+    max: "P12"
+    depends_on: ["P12"]
+    decision_group: "energy_investment"
+
+  E27:
+    default: 0
+    verbose_name: "Капиталовложения в энергосбережение"
+    is_input: true
+    min: 0
+    max: "min(P12 - E26, G18 + F14)"
+    depends_on: ["P12", "E26", "G18", "F14"]
+    decision_group: "energy_investment"
+
+industry:
+  G1:
+    default: 60
+    verbose_name: "Выбытие капитала для товаров"
+    is_input: false
+
+  G2:
+    default: 240
+    verbose_name: "Новый капитал для товаров"
+    is_input: false
+
+  G3:
+    default: 300
+    verbose_name: "Основной капитал для товаров"
+    is_input: false
+
+  G4:
+    default: 50
+    verbose_name: "Выбытие капитала сферы услуг"
+    is_input: false
+
+  G5:
+    default: 400
+    verbose_name: "Новый капитал сферы услуг"
+    is_input: false
+
+  G6:
+    default: 450
+    verbose_name: "Основной капитал сферы услуг"
+    is_input: false
+
+  G7:
+    default: 6
+    verbose_name: "Капитал на 1 рабочего"
+    is_input: false
+
+  G8:
+    default: 5
+    verbose_name: "Коэффициент производительности труда"
+    is_input: false
+
+  G9:
+    default: 2.25
+    verbose_name: "Услуги на душу населения"
+    is_input: false
+
+  G10:
+    default: 2.13
+    verbose_name: "Коэффициент производительности труда от услуг"
+    is_input: false
+
+  G11:
+    default: 1
+    verbose_name: "Коэффициент использования капитала"
+    is_input: false
+
+  G12:
+    default: 3000
+    verbose_name: "Фактическое производство товаров"
+    is_input: false
+
+  G13:
+    default: 0
+    verbose_name: "Экспорт товаров (прошлый период)"
+    is_input: false
+
+  G14:
+    default: 500
+    verbose_name: "Импорт товаров"
+    is_input: false
+
+  G15:
+    default: 3100
+    verbose_name: "Плановое производство товаров"
+    is_input: false
+
+  G16:
+    default: 3500
+    verbose_name: "Всего товаров"
+    is_input: false
+
+  G17:
+    default: 430
+    verbose_name: "Выбытие капитала во всех секторах экономики"
+    is_input: false
+
+  G18:
+    default: 0
+    verbose_name: "Капиталовложения в производство товаров"
+    is_input: true
+    min: 0
+    max: "P12 - E26 - E27"
+    depends_on: ["P12", "E26", "E27"]
+    decision_group: "industry_investment"
+
+  G19:
+    default: 0
+    verbose_name: "Капиталовложения в сферу услуг"
+    is_input: true
+    min: 0
+    max: "P12 - E26 - E27 - G18"
+    depends_on: ["P12", "E26", "E27", "G18"]
+    decision_group: "industry_investment"
+
+agriculture:
+  F1:
+    default: 160
+    verbose_name: "Выбытие капитала"
+    is_input: false
+
+  F2:
+    default: 640
+    verbose_name: "Новый капитал"
+    is_input: false
+
+  F3:
+    default: 800
+    verbose_name: "Основной капитал"
+    is_input: false
+
+  F4:
+    default: 0
+    verbose_name: "Выбытие природоохранного капитала"
+    is_input: false
+
+  F5:
+    default: 0
+    verbose_name: "Новый природоохранный капитал"
+    is_input: false
+
+  F6:
+    default: 0
+    verbose_name: "Основной природоохранный капитал"
+    is_input: false
+
+  F7:
+    default: 0.69
+    verbose_name: "Состояние окружающей среды"
+    is_input: false
+
+  F8:
+    default: 0.8
+    verbose_name: "Отношение капитала с/х к площади угодий"
+    is_input: false
+
+  F9:
+    default: 3450
+    verbose_name: "Плановое производство продовольствия"
+    is_input: false
+
+  F10:
+    default: 1
+    verbose_name: "Коэффициент использования с/х капитала"
+    is_input: false
+
+  F11:
+    default: 3300
+    verbose_name: "Производство продовольствия"
+    is_input: false
+
+  F12:
+    default: 1550
+    verbose_name: "Экспорт продовольствия (прошлый период)"
+    is_input: false
+
+  F13:
+    default: 0
+    verbose_name: "Импорт продовольствия"
+    is_input: false
+
+  F14:
+    default: 0
+    verbose_name: "Капиталовложения в производство продовольствия"
+    is_input: true
+    min: 0
+    max: "P12 - E26 - E27 - G18 - G19"
+    depends_on: ["P12", "E26", "E27", "G18", "G19"]
+    decision_group: "agriculture_investment"
+
+  F15:
+    default: 0
+    verbose_name: "Капиталовложения в защиту окружающей среды"
+    is_input: true
+    # Рассчитывается как P12 - E26 - E27 - G18 - G19 - F14
+
+trade:
+  TF1:
+    default: 0
+    verbose_name: "Внешний долг"
+    is_input: false
+
+  TF2:
+    default: 10
+    verbose_name: "Процентная ставка"
+    is_input: false
+
+  TF3:
+    default: 1
+    verbose_name: "Коэффициент девальвации"
+    is_input: false
+
+  TF4:
+    default: 0
+    verbose_name: "Проценты за кредит"
+    is_input: false
+
+  TF5:
+    default: 1000
+    verbose_name: "Максимально возможный кредит"
+    is_input: false
+
+  TF6:
+    default: 1
+    verbose_name: "Цена на импорт энергии"
+    is_input: false
+
+  TF7:
+    default: 1.1
+    verbose_name: "Цена на импорт продовольствия"
+    is_input: false
+
+  TF8:
+    default: 1.1
+    verbose_name: "Цена на импорт товаров"
+    is_input: false
+
+  TF9:
+    default: 0
+    verbose_name: "Иностранная помощь"
+    is_input: true
+    min: 0
+    max: null
+    decision_group: "currency_revenue"
+
+  TF10:
+    default: 0
+    verbose_name: "Энергия на экспорт (валютные поступления)"
+    is_input: true
+    min: "E21"
+    max: "E21"
+    depends_on: ["E21"]
+    decision_group: "currency_revenue"
+    # Фиксированное значение = E21
+
+  TF11:
+    default: 0
+    verbose_name: "Товары на экспорт (валютные поступления)"
+    is_input: true
+    min: "P13"
+    max: "P13"
+    depends_on: ["P13"]
+    decision_group: "currency_revenue"
+    # Фиксированное значение = P13
+
+  TF12:
+    default: 0
+    verbose_name: "Продовольствие на экспорт (валютные поступления)"
+    is_input: true
+    min: "P10"
+    max: "P10"
+    depends_on: ["P10"]
+    decision_group: "currency_revenue"
+    # Фиксированное значение = P10
+
+  TF13:
+    default: 0
+    verbose_name: "Новый кредит"
+    is_input: true
+    min: 0
+    max: "TF5"
+    depends_on: ["TF5"]
+    decision_group: "loan"
+
+  TF14:
+    default: 0
+    verbose_name: "Выплаты по долгу"
+    is_input: true
+    min: 0
+    max: "TF1"
+    depends_on: ["TF1"]
+    decision_group: "debt_payment"
+
+  TF15:
+    default: 0
+    verbose_name: "Валюта для импорта, суммарно"
+    is_input: true
+    # Рассчитывается как TF9 + TF10 + TF11 + TF12 + TF13 - TF14
+
+  TF16:
+    default: 0
+    verbose_name: "Валюта для импорта энергии"
+    is_input: true
+    min: 0
+    max: "TF15"
+    depends_on: ["TF15"]
+    decision_group: "import_distribution"
+
+  TF17:
+    default: 0
+    verbose_name: "Валюта для импорта товаров"
+    is_input: true
+    min: 0
+    max: "TF15 - TF16"
+    depends_on: ["TF15", "TF16"]
+    decision_group: "import_distribution"
+
+  TF18:
+    default: 0
+    verbose_name: "Валюта для импорта продовольствия"
+    is_input: true
+    # Рассчитывается как TF15 - TF16 - TF17
