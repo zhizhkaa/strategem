@@ -168,7 +168,14 @@ class ParameterView(APIView):
 
         # Устанавливаем параметр
         state_manager = get_state_manager()
-        if state_manager.is_operator_controlled_param(param) and not force:
+        is_admin = bool(request.session.get("is_admin", False))
+        is_operator_param = state_manager.is_operator_controlled_param(param)
+        if force and not is_admin:
+            return Response(
+                {"error": "Принудительное изменение параметра доступно только оператору."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if is_operator_param and not is_admin:
             return Response(
                 {"error": f"Параметр {param} задаётся оператором, а не командой."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -367,6 +374,8 @@ class BatchParameterView(APIView):
             value = parameters[param_name]
             if value < 0:
                 errors[param_name] = "Значение не может быть отрицательным"
+                continue
+            if param_name in user_inputs and updated_params.get(param_name) == value:
                 continue
 
             before_apply = dict(updated_params)

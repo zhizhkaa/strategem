@@ -362,6 +362,26 @@
                                                 />
                                             </svg>
                                         </a>
+                                        <button
+                                            x-show="game.status === 'active'"
+                                            @click="openOperatorModal(game)"
+                                            class="text-purple-600 hover:text-purple-700 p-1"
+                                            title="Иностранная помощь"
+                                        >
+                                            <svg
+                                                class="w-5 h-5"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                            >
+                                                <path
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                                />
+                                            </svg>
+                                        </button>
                                         <!-- Pause/Resume buttons -->
                                         <button
                                             x-show="game.status === 'active'"
@@ -983,6 +1003,97 @@
         </div>
     </div>
 
+    <!-- Operator Parameter Modal -->
+    <div
+        x-show="showOperatorModal"
+        x-transition
+        class="fixed inset-0 z-50 overflow-y-auto"
+        style="display: none"
+    >
+        <div class="flex min-h-screen items-center justify-center px-4 py-6">
+            <div
+                class="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+                @click="showOperatorModal = false"
+            ></div>
+
+            <div
+                class="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6"
+                @click.stop
+            >
+                <div class="flex items-start justify-between mb-4">
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900">
+                            Иностранная помощь
+                        </h3>
+                        <p
+                            class="text-sm text-gray-500 mt-1"
+                            x-text="operatorGame ? operatorGame.team_name + ', период ' + operatorGame.current_period : ''"
+                        ></p>
+                    </div>
+                    <button
+                        @click="showOperatorModal = false"
+                        class="text-gray-400 hover:text-gray-600"
+                    >
+                        <svg
+                            class="w-5 h-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"
+                            />
+                        </svg>
+                    </button>
+                </div>
+
+                <form @submit.prevent="saveOperatorParam()">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                        TF9 Иностранная помощь
+                    </label>
+                    <input
+                        x-model.number="operatorValue"
+                        type="number"
+                        min="0"
+                        step="1"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-strategem-500"
+                        :disabled="operatorLoading || operatorSaving"
+                    />
+                    <p class="text-xs text-gray-500 mt-2">
+                        Значение сохраняется в текущий период и не отправляется от имени команды.
+                    </p>
+                    <p
+                        x-show="operatorError"
+                        class="mt-3 text-sm text-red-600"
+                        x-text="operatorError"
+                    ></p>
+
+                    <div class="flex justify-end space-x-3 mt-6">
+                        <button
+                            type="button"
+                            @click="showOperatorModal = false"
+                            class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                        >
+                            Отмена
+                        </button>
+                        <button
+                            type="submit"
+                            :disabled="operatorLoading || operatorSaving"
+                            class="px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-md hover:bg-purple-700 disabled:opacity-50"
+                        >
+                            <span
+                                x-text="operatorSaving ? 'Сохранение...' : 'Сохранить'"
+                            ></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Delete Confirmation Modal -->
     <div
         x-show="showDeleteModal"
@@ -1424,6 +1535,14 @@
             showCreateFacultyModal: false,
             showCreateGroupModal: false,
             showCreateTeamModal: false,
+            showOperatorModal: false,
+
+            // Operator parameter state
+            operatorGame: null,
+            operatorValue: 0,
+            operatorLoading: false,
+            operatorSaving: false,
+            operatorError: null,
 
             // Form state
             newGame: {
@@ -1616,6 +1735,47 @@
                     await this.loadGames();
                 } catch (e) {
                     showToast("Ошибка: " + e.message, "error");
+                }
+            },
+
+            async openOperatorModal(game) {
+                this.operatorGame = game;
+                this.operatorValue = 0;
+                this.operatorError = null;
+                this.operatorLoading = true;
+                this.showOperatorModal = true;
+
+                try {
+                    const response = await API.get(`/games/${game.id}/parameters/TF9/`);
+                    this.operatorValue = Number(response.value || 0);
+                } catch (e) {
+                    this.operatorError = e.message;
+                } finally {
+                    this.operatorLoading = false;
+                }
+            },
+
+            async saveOperatorParam() {
+                if (!this.operatorGame) return;
+                if (this.operatorValue < 0) {
+                    this.operatorError = "Значение не может быть отрицательным";
+                    return;
+                }
+
+                this.operatorSaving = true;
+                this.operatorError = null;
+
+                try {
+                    await API.post(`/games/${this.operatorGame.id}/parameters/TF9/`, {
+                        value: Number(this.operatorValue || 0),
+                        force: true,
+                    });
+                    showToast("Иностранная помощь сохранена", "success");
+                    this.showOperatorModal = false;
+                } catch (e) {
+                    this.operatorError = e.message;
+                } finally {
+                    this.operatorSaving = false;
                 }
             },
 

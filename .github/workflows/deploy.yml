@@ -34,18 +34,30 @@ jobs:
               COMPOSE="docker-compose"
             fi
 
-            $COMPOSE build web
-            $COMPOSE up -d db
+            DB_CONTAINER="$($COMPOSE ps -q db || true)"
+            if [ -z "$DB_CONTAINER" ]; then
+              $COMPOSE up -d db
+            elif [ "$(docker inspect -f '{{.State.Running}}' "$DB_CONTAINER")" != "true" ]; then
+              docker start "$DB_CONTAINER"
+            fi
 
             until $COMPOSE exec -T db sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'; do
               sleep 2
             done
 
-            $COMPOSE up -d --remove-orphans
+            $COMPOSE build web
+            $COMPOSE rm -f web
+            $COMPOSE up -d --no-deps web
 
             $COMPOSE exec -T web python manage.py migrate --noinput
             $COMPOSE exec -T web python manage.py collectstatic --noinput --clear
             $COMPOSE exec -T web python manage.py check --deploy
+
+            if [ -n "$($COMPOSE ps -q nginx || true)" ]; then
+              $COMPOSE restart nginx
+            else
+              $COMPOSE up -d --no-deps nginx
+            fi
 
             $COMPOSE ps
 

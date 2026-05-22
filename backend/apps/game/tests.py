@@ -366,6 +366,70 @@ class GameApiTests(APITestCase):
         self.assertEqual(new_period.TF12, 0)
         self.assertNotEqual(new_period.P10, 911)
 
+    def test_batch_ignores_unchanged_already_filled_parameters(self):
+        game = self._create_game(
+            difficulty=GameDifficulty.STANDARD,
+            total_periods=10,
+        )
+
+        first_response = self.client.post(
+            f"/api/games/{game.id}/parameters/batch/",
+            {"parameters": {"P9": 3300}, "minister": "population"},
+            format="json",
+        )
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+
+        second_response = self.client.post(
+            f"/api/games/{game.id}/parameters/batch/",
+            {"parameters": {"P9": 3300, "P11": 2000, "P12": 1500}, "minister": "population"},
+            format="json",
+        )
+
+        self.assertEqual(
+            second_response.status_code,
+            status.HTTP_200_OK,
+            msg=getattr(second_response, "data", second_response.content),
+        )
+        period = game.periods.get(period_number=1)
+        self.assertEqual(period.P9, 3300)
+        self.assertEqual(period.P11, 2000)
+        self.assertEqual(period.P12, 1500)
+
+    def test_batch_allows_editing_already_filled_parameters(self):
+        game = self._create_game(
+            difficulty=GameDifficulty.STANDARD,
+            total_periods=10,
+        )
+
+        first_response = self.client.post(
+            f"/api/games/{game.id}/parameters/batch/",
+            {"parameters": {"P9": 3300}, "minister": "population"},
+            format="json",
+        )
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+
+        second_response = self.client.post(
+            f"/api/games/{game.id}/parameters/batch/",
+            {"parameters": {"P11": 2000, "P12": 1500}, "minister": "population"},
+            format="json",
+        )
+        self.assertEqual(second_response.status_code, status.HTTP_200_OK)
+
+        edit_response = self.client.post(
+            f"/api/games/{game.id}/parameters/batch/",
+            {"parameters": {"P9": 3200}, "minister": "population"},
+            format="json",
+        )
+
+        self.assertEqual(
+            edit_response.status_code,
+            status.HTTP_200_OK,
+            msg=getattr(edit_response, "data", edit_response.content),
+        )
+        period = game.periods.get(period_number=1)
+        self.assertEqual(period.P9, 3200)
+        self.assertEqual(period.P10, 100)
+
     def test_next_period_repairs_existing_negative_f15_before_using_history(self):
         game = self._create_game(
             difficulty=GameDifficulty.SIMPLE,
@@ -654,6 +718,64 @@ class GameApiTests(APITestCase):
 
         period.refresh_from_db()
         self.assertEqual(period.TF9, 0)
+
+    def test_operator_controlled_param_requires_admin_even_with_force(self):
+        game = self._create_game()
+        session = self.client.session
+        session["is_admin"] = False
+        session.save()
+
+        response = self.client.post(
+            f"/api/games/{game.id}/parameters/TF9/",
+            {"value": 100, "force": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn("оператор", response.data["error"])
+
+        period = game.get_current_period_obj()
+        period.refresh_from_db()
+        self.assertEqual(period.TF9, 0)
+
+    def test_admin_can_set_operator_controlled_foreign_aid(self):
+        game = self._create_game()
+
+        response = self.client.post(
+            f"/api/games/{game.id}/parameters/TF9/",
+            {"value": 100, "force": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        period = game.get_current_period_obj()
+        period.refresh_from_db()
+        self.assertEqual(period.TF9, 100)
+
+    def test_decision_structure_hides_operator_controlled_params_from_players(self):
+        response = self.client.get("/api/games/decision-structure/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        summary_inputs = {
+            param
+            for group in response.data["summary_groups"]
+            for param in group["inputs"]
+        }
+        trade_finance_inputs = {
+            param
+            for decision in response.data["ministers"]["trade_finance"]["decisions"]
+            for param in decision["inputs"]
+        }
+        trade_finance_decision_keys = {
+            decision["key"]
+            for decision in response.data["ministers"]["trade_finance"]["decisions"]
+        }
+
+        self.assertNotIn("TF9", summary_inputs)
+        self.assertNotIn("TF9", trade_finance_inputs)
+        self.assertNotIn("currency_revenue", trade_finance_decision_keys)
 
     def test_batch_is_atomic_when_dependent_value_is_invalid(self):
         game = self._create_game()

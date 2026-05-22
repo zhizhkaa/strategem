@@ -192,7 +192,7 @@
                                                 <input type="number"
                                                        :id="'input-' + param"
                                                        x-model.number="inputValues[param]"
-                                                       :disabled="!isEnabled(param) || isViewOnly || isGamePaused"
+                                                       :disabled="!isSummaryInputEnabled(param) || isViewOnly || isGamePaused"
                                                        @input="touchedParams[param] = true"
                                                        @change="onCellChange(param)"
                                                        step="any"
@@ -417,7 +417,7 @@ function gameApp() {
 
         getVal(param)              { return this.gameState?.parameters?.[param]?.value; },
         getPastVal(param, period)  { const p = this.pastPeriods.find(x => x.period_number === period); return p?.[param] ?? null; },
-        isEnabled(param)           { return this.gameState?.parameters?.[param]?.status !== 'locked'; },
+        isSummaryInputEnabled(param) { return this.allInputParams.has(param); },
         isError(param)             { return this.validationErrors.indexOf(param) !== -1; },
         isIncomplete(param)        { return !!this.incompleteParamSet[param]; },
         getMinisterShort(key)      { return this.MINISTER_SHORTS[key] || key; },

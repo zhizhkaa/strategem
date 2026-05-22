@@ -30,8 +30,9 @@ ALLOWED_HOSTS = ["localhost", "127.0.0.1", *config("ALLOWED_HOSTS", default="", 
 if DOMAIN:
     ALLOWED_HOSTS.extend([DOMAIN, f"www.{DOMAIN}"])
 
-# Admin password for the game admin panel
-ADMIN_PASSWORD = config("ADMIN_PASSWORD", default="")
+# Admin password for the game admin panel.
+# Local development uses a known default; production should set ADMIN_PASSWORD.
+ADMIN_PASSWORD = config("ADMIN_PASSWORD", default="admin123" if DEBUG else "")
 
 # Application definition
 

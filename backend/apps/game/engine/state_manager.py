@@ -673,7 +673,7 @@ class GameStateManager:
         # Проверяем, можно ли заполнять этот параметр (пропускается при force=True)
         if not force:
             fillable = self._get_fillable_params(decision_state)
-            if param_name not in fillable:
+            if param_name not in fillable and param_name not in user_inputs:
                 return False, f"Параметр {param_name} сейчас недоступен для ввода", params
 
         # force=True используется для восстановления/сводного ввода и должен

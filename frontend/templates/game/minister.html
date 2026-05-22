@@ -625,8 +625,6 @@ function ministerApp(ministerKey) {
                 } else if (param.status === 'filled') {
                     // Input param that user already explicitly set: pre-fill
                     newValues[name] = param.value ?? '';
-                    // Ранее заполненные параметры считаем «тронутыми»
-                    newTouched[name] = true;
                 } else {
                     // Input param not yet filled: leave blank
                     newValues[name] = '';
@@ -823,6 +821,7 @@ function ministerApp(ministerKey) {
         isInputEnabled(param) {
             if (this.isViewOnly || this.isGamePaused) return false;
             if (this.isFixed(param)) return false;
+            if (this.getParamStatus(param) === 'filled') return true;
             const decision = this.ministerConfig.decisions.find(d => d.inputs.includes(param));
             if (!decision) return false;
             return this.isStageAvailable(decision.key);

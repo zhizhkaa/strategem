@@ -771,6 +771,16 @@ class GameViewSet(viewsets.ModelViewSet):
         }
         ministers_config = order_config.get("ministers", {})
 
+        def is_team_stage(stage: dict) -> bool:
+            return stage.get("flow", "team") == "team"
+
+        def get_team_inputs(stage: dict) -> list[dict]:
+            return [
+                inp
+                for inp in stage.get("inputs", [])
+                if inp.get("controller", "team") == "team"
+            ]
+
         # Строим summary_groups из SUMMARY_GROUP_DEFS
         summary_groups = []
         for grp_def in SUMMARY_GROUP_DEFS:
@@ -780,11 +790,16 @@ class GameViewSet(viewsets.ModelViewSet):
             stage_names = []
             for stage_key in grp_def["stages"]:
                 stage = stages.get(stage_key, {})
+                if not is_team_stage(stage):
+                    continue
                 if first_minister is None:
                     first_minister = stage.get("minister")
                 stage_names.append(stage.get("name", stage_key))
-                inputs_all += [inp["param"] for inp in stage.get("inputs", [])]
+                inputs_all += [inp["param"] for inp in get_team_inputs(stage)]
                 auto_all += [ac["param"] for ac in stage.get("auto_calculated", [])]
+
+            if not inputs_all and not auto_all:
+                continue
 
             label = grp_def["label"] or " / ".join(stage_names)
             summary_groups.append(
@@ -807,6 +822,9 @@ class GameViewSet(viewsets.ModelViewSet):
             decisions = []
             for stage_key in minister_data.get("decisions", []):
                 stage = stages.get(stage_key, {})
+                if not is_team_stage(stage):
+                    continue
+                team_inputs = get_team_inputs(stage)
                 # Собираем inputs с полем note
                 inputs_with_notes = [
                     {
@@ -814,14 +832,14 @@ class GameViewSet(viewsets.ModelViewSet):
                         "note": inp.get("note"),
                         "validation": inp.get("validation"),
                     }
-                    for inp in stage.get("inputs", [])
+                    for inp in team_inputs
                 ]
                 decisions.append(
                     {
                         "key": stage_key,
                         "number": stage.get("order", 0),
                         "name": stage.get("name", stage_key),
-                        "inputs": [inp["param"] for inp in stage.get("inputs", [])],
+                        "inputs": [inp["param"] for inp in team_inputs],
                         "inputs_detail": inputs_with_notes,
                         "auto": [
                             ac["param"] for ac in stage.get("auto_calculated", [])
