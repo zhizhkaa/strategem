@@ -182,6 +182,77 @@ class GameCalculator:
 
         return params
 
+    def get_decision_residual_errors(
+        self,
+        params: dict[str, float],
+        history: list[dict[str, float]],
+    ) -> dict[str, str]:
+        """Возвращает ошибки перерасхода по остаточным decision-балансам."""
+        rules = [
+            {
+                "available": "P2",
+                "allocated": ["P9"],
+                "errors": ["P9"],
+                "label": "продовольствия",
+            },
+            {
+                "available": "P3",
+                "allocated": ["P11", "P12"],
+                "errors": ["P11", "P12"],
+                "label": "товаров",
+            },
+            {
+                "available": "E7",
+                "allocated": ["E20", "E21", "E22"],
+                "errors": ["E20", "E21", "E22"],
+                "label": "энергоресурсов",
+            },
+            {
+                "available": "E23",
+                "allocated": ["E24"],
+                "errors": ["E24"],
+                "label": "энергии для производства",
+            },
+            {
+                "available": "P12",
+                "allocated": ["E26", "E27", "G18", "G19", "F14"],
+                "errors": ["E26", "E27", "G18", "G19", "F14"],
+                "label": "капиталовложений",
+            },
+            {
+                "available": "TF9 + TF10 + TF11 + TF12 + TF13",
+                "allocated": ["TF14"],
+                "errors": ["TF14"],
+                "label": "валюты до выплаты долга",
+            },
+            {
+                "available": "TF15",
+                "allocated": ["TF16", "TF17"],
+                "errors": ["TF16", "TF17"],
+                "label": "валюты для импорта",
+            },
+        ]
+
+        errors = {}
+        for rule in rules:
+            available = self._evaluate_formula(rule["available"], params, history)
+            allocated = sum(
+                float(params.get(param_name, 0) or 0)
+                for param_name in rule["allocated"]
+            )
+            overrun = allocated - available
+            if overrun <= 1e-9:
+                continue
+
+            message = (
+                f"Распределение {rule['label']} превышает доступное значение "
+                f"на {self._round_half_up(overrun, 2)}"
+            )
+            for param_name in rule["errors"]:
+                errors[param_name] = message
+
+        return errors
+
     def apply_decision(
         self,
         params: dict[str, float],

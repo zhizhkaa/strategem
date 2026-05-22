@@ -412,9 +412,65 @@ class GameViewSet(viewsets.ModelViewSet):
         game = self.get_object()
 
         current_period = game.get_current_period_obj()
+        history = game.get_history()
+        params = current_period.get_parameters()
+        calculator = get_calculator()
         decision_state = DecisionState()
         decision_state.from_dict(game.get_decision_states())
         state_manager = get_state_manager()
+
+        error_params = []
+        residual_error_params = set(
+            calculator.get_decision_residual_errors(params, history)
+        )
+        for param_name in current_period.user_inputs:
+            if param_name not in residual_error_params:
+                continue
+            config = calculator._parameters_config.get(param_name, {})
+            if not config.get("is_input", False):
+                continue
+            value = params.get(param_name)
+            if value is None:
+                continue
+            is_valid, _err, _bounds = calculator.validate_input(
+                params, param_name, value, history
+            )
+            if not is_valid and param_name not in error_params:
+                error_params.append(param_name)
+        for param_name in residual_error_params:
+            if param_name not in error_params:
+                error_params.append(param_name)
+
+        if error_params:
+            param_to_minister = state_manager.get_param_to_minister_map()
+            ministers = list(state_manager._decision_order.get("ministers", {}).keys())
+            by_minister: dict[str, dict] = {
+                m: {"errors": [], "incomplete": []} for m in ministers
+            }
+            for param_name in error_params:
+                minister = param_to_minister.get(param_name)
+                if minister in by_minister:
+                    by_minister[minister]["errors"].append(param_name)
+
+            validation_state = {
+                "errors": error_params,
+                "incomplete": [],
+                "by_minister": by_minister,
+                "last_validated": datetime.now(timezone.utc).isoformat(),
+            }
+            current_period.validation_state = validation_state
+            current_period.save(update_fields=["validation_state"])
+            return Response(
+                {
+                    "success": False,
+                    "error": "В параметрах периода есть ошибки. Исправьте их перед переходом.",
+                    "current_period": game.current_period,
+                    "game_finished": False,
+                    "validation_state": validation_state,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         can_advance = state_manager._can_advance_period(
             decision_state, current_period.user_inputs
         )
@@ -590,6 +646,9 @@ class GameViewSet(viewsets.ModelViewSet):
                 params, param_name, value, history
             )
             if not is_valid:
+                error_params.append(param_name)
+        for param_name in calculator.get_decision_residual_errors(params, history):
+            if param_name not in error_params:
                 error_params.append(param_name)
 
         # --- Незаполненные параметры (жёлтая подсветка) ---

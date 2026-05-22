@@ -273,6 +273,41 @@ class GameApiTests(APITestCase):
         self.assertEqual(next_period.P10, 0)
         self.assertEqual(next_period.P11, 0)
 
+    def test_admin_calculator_rejects_capital_investment_overrun(self):
+        game = self._create_game(
+            difficulty=GameDifficulty.SIMPLE,
+            total_periods=10,
+        )
+        overspent_inputs = {
+            "P9": 0,
+            "P11": 0,
+            "P12": 1000,
+            "E21": 0,
+            "E22": 0,
+            "E24": 0,
+            "E26": 700,
+            "E27": 400,
+            "G18": 200,
+            "G19": 100,
+            "F14": 115,
+            "TF13": 0,
+            "TF14": 0,
+            "TF16": 0,
+            "TF17": 0,
+        }
+
+        response = self.client.post(
+            f"/api/admin/calculator/{game.id}/calculate/",
+            {"parameters": overspent_inputs},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("F14", response.data["errors"])
+
+        period = game.periods.get(period_number=1)
+        self.assertEqual(period.F15, 0)
+
     def test_next_period_preserves_completed_decisions_and_resets_new_decisions(self):
         game = self._create_game(
             difficulty=GameDifficulty.SIMPLE,
@@ -330,6 +365,141 @@ class GameApiTests(APITestCase):
         self.assertEqual(new_period.P12, 0)
         self.assertEqual(new_period.TF12, 0)
         self.assertNotEqual(new_period.P10, 911)
+
+    def test_next_period_repairs_existing_negative_f15_before_using_history(self):
+        game = self._create_game(
+            difficulty=GameDifficulty.SIMPLE,
+            total_periods=10,
+        )
+        period = game.periods.get(period_number=1)
+        period.F6 = 900
+        period.F4 = 150
+        period.F15 = -515
+        period.save()
+
+        game.advance_period()
+
+        period.refresh_from_db()
+        next_period = game.periods.get(period_number=2)
+        self.assertEqual(period.F15, 0)
+        self.assertEqual(next_period.F6, 750)
+
+    def test_validate_period_reports_capital_investment_overrun(self):
+        game = self._create_game(
+            difficulty=GameDifficulty.SIMPLE,
+            total_periods=10,
+        )
+        period = game.periods.get(period_number=1)
+        period.P12 = 1000
+        period.E26 = 700
+        period.E27 = 400
+        period.G18 = 200
+        period.G19 = 100
+        period.F14 = 115
+        period.F15 = 0
+        period.user_inputs = ["E26", "E27", "G18", "G19", "F14"]
+        period.save()
+
+        response = self.client.post(f"/api/games/{game.id}/validate-period/", format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["valid"])
+        self.assertFalse(response.data["can_advance"])
+        self.assertIn("F14", response.data["errors"])
+
+    def test_validate_period_reports_all_decision_residual_overruns(self):
+        cases = [
+            (
+                {"P2": 100, "P9": 101},
+                ["P9"],
+            ),
+            (
+                {"P3": 100, "P11": 60, "P12": 41},
+                ["P11", "P12"],
+            ),
+            (
+                {"E7": 100, "E20": 20, "E21": 40, "E22": 41},
+                ["E20", "E21", "E22"],
+            ),
+            (
+                {"E23": 100, "E24": 101},
+                ["E24"],
+            ),
+            (
+                {"TF9": 0, "TF10": 10, "TF11": 10, "TF12": 10, "TF13": 10, "TF14": 41},
+                ["TF14"],
+            ),
+            (
+                {"TF15": 100, "TF16": 60, "TF17": 41},
+                ["TF16", "TF17"],
+            ),
+        ]
+
+        for overrides, expected_errors in cases:
+            with self.subTest(overrides=overrides):
+                game = self._create_game(
+                    difficulty=GameDifficulty.SIMPLE,
+                    total_periods=10,
+                )
+                period = game.periods.get(period_number=1)
+                for param_name, value in overrides.items():
+                    setattr(period, param_name, value)
+                period.user_inputs = list(overrides.keys())
+                period.save()
+
+                response = self.client.post(
+                    f"/api/games/{game.id}/validate-period/",
+                    format="json",
+                )
+
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.assertFalse(response.data["valid"])
+                for param_name in expected_errors:
+                    self.assertIn(param_name, response.data["errors"])
+
+    def test_next_period_rejects_capital_investment_overrun(self):
+        game = self._create_game(
+            difficulty=GameDifficulty.SIMPLE,
+            total_periods=10,
+        )
+        game.decision_capital = 4
+        game.decision_energy = 1
+        game.decision_finance = 3
+        game.decision_import = 3
+        game.save()
+
+        period = game.periods.get(period_number=1)
+        period.P12 = 1000
+        period.E26 = 700
+        period.E27 = 400
+        period.G18 = 200
+        period.G19 = 100
+        period.F14 = 115
+        period.F15 = 0
+        period.user_inputs = [
+            "P9",
+            "P11",
+            "P12",
+            "E21",
+            "E22",
+            "E24",
+            "E26",
+            "E27",
+            "G18",
+            "G19",
+            "F14",
+            "TF13",
+            "TF14",
+            "TF16",
+            "TF17",
+        ]
+        period.save()
+
+        response = self.client.post(f"/api/games/{game.id}/next-period/", format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(game.periods.count(), 1)
+        self.assertIn("F14", response.data["validation_state"]["errors"])
 
     def test_force_parameter_submission_preserves_explicit_fixed_input(self):
         game = self._create_game(
@@ -610,7 +780,7 @@ class GameCalculatorExcelAlignmentTests(TestCase):
             history,
         )
 
-        self.assertEqual(g8, 4.0)
+        self.assertEqual(g8, 7.2)
         self.assertEqual(f9, 5000.0)
 
     def test_trade_formulas_match_excel_loan_and_price_rules(self):
@@ -654,6 +824,23 @@ class GameCalculatorExcelAlignmentTests(TestCase):
         self.calculator.apply_decision_formulas(params, [])
 
         self.assertEqual(params["E9"], 400)
+
+    def test_environmental_protection_investment_does_not_go_negative(self):
+        params = self.calculator.get_default_parameters()
+        params.update(
+            {
+                "P12": 1000,
+                "E26": 700,
+                "E27": 400,
+                "G18": 200,
+                "G19": 100,
+                "F14": 115,
+            }
+        )
+
+        self.calculator.apply_decision_formulas(params, [])
+
+        self.assertEqual(params["F15"], 0)
 
     def test_high_debt_rule_uses_energy_in_threshold_and_keeps_debt_value(self):
         params = {"TF1": 600, "P2": 300, "P3": 300, "E7": 1000}
@@ -805,7 +992,7 @@ class GameCalculatorExcelAlignmentTests(TestCase):
         self.assertIsNotNone(error)
         self.assertEqual(bounds, (0.0, 0.0))
 
-    def test_f4_and_f5_use_previous_environmental_capital_like_excel(self):
+    def test_f4_and_f5_use_current_environmental_capital_like_legacy_stg(self):
         params = self.calculator.get_default_parameters()
         params["F6"] = 900
         history = [{"F6": 600}]
@@ -821,8 +1008,8 @@ class GameCalculatorExcelAlignmentTests(TestCase):
             history,
         )
 
-        self.assertEqual(f4, 100)
-        self.assertEqual(f5, 500)
+        self.assertEqual(f4, 150)
+        self.assertEqual(f5, 750)
 
     def test_e27_is_limited_by_goods_and_food_investments(self):
         params = self.calculator.get_default_parameters()

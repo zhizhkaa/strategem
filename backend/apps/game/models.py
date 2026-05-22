@@ -212,6 +212,21 @@ class Game(models.Model):
             calculator.get_decision_parameter_names()
         )
 
+    def _repair_negative_decision_residuals(
+        self, period: "GamePeriod", params: dict[str, float]
+    ) -> None:
+        """Исправляет ранее сохранённые отрицательные остаточные автопараметры."""
+        repaired_fields = []
+
+        for param_name in ("P10", "P13", "E23", "E25", "F15", "TF15", "TF18"):
+            if params.get(param_name, 0) < 0:
+                params[param_name] = 0.0
+                setattr(period, param_name, 0.0)
+                repaired_fields.append(param_name)
+
+        if repaired_fields:
+            period.save(update_fields=repaired_fields)
+
     def get_history(self) -> list[dict[str, float]]:
         """Возвращает историю параметров за все предыдущие периоды."""
         periods = GamePeriod.objects.filter(
@@ -251,6 +266,7 @@ class Game(models.Model):
         # Получаем текущий период и историю
         current_period = self.get_current_period_obj()
         current_params = current_period.get_parameters()
+        self._repair_negative_decision_residuals(current_period, current_params)
         history = self.get_history()
 
         # Рассчитываем новые параметры

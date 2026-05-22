@@ -316,8 +316,19 @@ class CalculatorCalcView(APIView):
         for k, v in input_values.items():
             params[k] = float(v)
 
-        # Рассчитать
         calculator = get_calculator()
+        errors = calculator.get_decision_residual_errors(params, history)
+
+        if errors:
+            return Response(
+                {
+                    "error": "Ошибки в параметрах",
+                    "errors": errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Рассчитать
         calculator.apply_decision_formulas(params, history)
         current_period.set_parameters(params)
         current_period.user_inputs = sorted(

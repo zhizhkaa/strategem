@@ -458,6 +458,9 @@ class BatchParameterView(APIView):
             is_valid, _, _ = calculator.validate_input(params, param_name, value, history)
             if not is_valid:
                 errors.append(param_name)
+        for param_name in calculator.get_decision_residual_errors(params, history):
+            if param_name not in errors:
+                errors.append(param_name)
 
         incomplete = self._collect_incomplete_params(
             params=params,

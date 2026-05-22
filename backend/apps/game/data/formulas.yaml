@@ -25,7 +25,7 @@ calc_energy:
 calc_agriculture:
   F3: "prev(F3) - prev(F1) + prev(F14)"
   F6: "prev(F6) - prev(F4) + prev(F15)"
-  F4: "prev(F6) / 6"
+  F4: "F6 / 6"
   F7: "prev(F7) + interpolate(F4, prev(F7)) - interpolate(F3, (prev(F3) * prev(F10) + prev(G3) * prev(G11) + prev(E3) - 3 * prev(F6)) / 20000)"
   F8: "F3 / 1000"
   F12: "prev(TF12)"
@@ -68,7 +68,7 @@ calc_capital:
   G5: "G6 * 8 / 9"
   F1: "F3 / 5"
   F2: "F3 - F1"
-  F5: "prev(F6) * 5 / 6"
+  F5: "F6 * 5 / 6"
 
 # ============================================
 # 7. ЭНЕРГОПОТРЕБЛЕНИЕ (calc_energy_consumption)
@@ -89,7 +89,7 @@ calc_production_indicators:
   G9: "G6 / P1"
   G11: "min(prev(E25) / prev(E14), 1.1)"
   G10: "interpolate(G2, G9)"
-  G8: "interpolate(G3, G7 * G11)"
+  G8: "interpolate(G3, G7)"
   F10: "min(prev(E24) / prev(E12), 1.1)"
   F9: "6250 * interpolate(F2, F3 * F10 / 1000) * F7"
 
@@ -114,9 +114,9 @@ calc_energy_balance:
   E8: "0.2"
   E9: "prev(P11) / 5"
   E17: "interpolate(E1, E3 / 1000) * 1000"
-  E16: "max(E17 / E3, 3.5)"
+  E16: "max(prev(E17) / prev(E3), 3.5)"
   E19: "prev(TF16) / prev(TF6)"
-  E7: "E17 + E19 + prev(E22)"
+  E7: "prev(E17) + E19 + prev(E22)"
 
 # ============================================
 # 11. ПРОИЗВОДСТВО ТОВАРОВ (calc_goods_production)
@@ -150,20 +150,20 @@ calc_final_totals:
 # ============================================
 decisions:
   # Распределение продовольствия
-  P10: "P2 - P9"
+  P10: "max(P2 - P9, 0)"
 
   # Распределение товаров
-  P13: "P3 - P11 - P12"
+  P13: "max(P3 - P11 - P12, 0)"
 
   # Энергия для населения (фиксированное = P11 * 0.2)
   E20: "P11 * 0.2"
 
   # Распределение энергии
-  E23: "E7 - E20 - E21 - E22"
-  E25: "E23 - E24"
+  E23: "max(E7 - E20 - E21 - E22, 0)"
+  E25: "max(E23 - E24, 0)"
 
   # Капиталовложения
-  F15: "P12 - E26 - E27 - G18 - G19 - F14"
+  F15: "max(P12 - E26 - E27 - G18 - G19 - F14, 0)"
 
   # Экспорт (фиксированные значения из решений)
   TF10: "E21"
@@ -171,5 +171,5 @@ decisions:
   TF12: "P10"
 
   # Валютный баланс
-  TF15: "TF9 + TF10 + TF11 + TF12 + TF13 - TF14"
-  TF18: "TF15 - TF16 - TF17"
+  TF15: "max(TF9 + TF10 + TF11 + TF12 + TF13 - TF14, 0)"
+  TF18: "max(TF15 - TF16 - TF17, 0)"

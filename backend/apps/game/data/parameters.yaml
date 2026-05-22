@@ -78,7 +78,7 @@ population:
     verbose_name: "Товары для капиталовложения"
     is_input: true
     min: 0
-    max: "P3 - P11"
+    max: "max(P3 - P11, 0)"
     depends_on: ["P3", "P11"]
     decision_group: "goods_distribution"
 
@@ -199,7 +199,7 @@ energy:
     verbose_name: "Энергоресурсы на экспорт"
     is_input: true
     min: 0
-    max: "E7 - E20"
+    max: "max(E7 - E20, 0)"
     depends_on: ["E7", "E20"]
     decision_group: "energy_distribution"
 
@@ -208,7 +208,7 @@ energy:
     verbose_name: "Энергоресурсы в резерв"
     is_input: true
     min: 0
-    max: "E7 - E20 - E21"
+    max: "max(E7 - E20 - E21, 0)"
     depends_on: ["E7", "E20", "E21"]
     decision_group: "energy_distribution"
 
@@ -247,7 +247,7 @@ energy:
     verbose_name: "Капиталовложения в энергосбережение"
     is_input: true
     min: 0
-    max: "min(P12 - E26, G18 + F14)"
+    max: "max(min(P12 - E26, G18 + F14), 0)"
     depends_on: ["P12", "E26", "G18", "F14"]
     decision_group: "energy_investment"
 
@@ -342,7 +342,7 @@ industry:
     verbose_name: "Капиталовложения в производство товаров"
     is_input: true
     min: 0
-    max: "P12 - E26 - E27"
+    max: "max(P12 - E26 - E27, 0)"
     depends_on: ["P12", "E26", "E27"]
     decision_group: "industry_investment"
 
@@ -351,7 +351,7 @@ industry:
     verbose_name: "Капиталовложения в сферу услуг"
     is_input: true
     min: 0
-    max: "P12 - E26 - E27 - G18"
+    max: "max(P12 - E26 - E27 - G18, 0)"
     depends_on: ["P12", "E26", "E27", "G18"]
     decision_group: "industry_investment"
 
@@ -426,7 +426,7 @@ agriculture:
     verbose_name: "Капиталовложения в производство продовольствия"
     is_input: true
     min: 0
-    max: "P12 - E26 - E27 - G18 - G19"
+    max: "max(P12 - E26 - E27 - G18 - G19, 0)"
     depends_on: ["P12", "E26", "E27", "G18", "G19"]
     decision_group: "agriculture_investment"
 
@@ -553,7 +553,7 @@ trade:
     verbose_name: "Валюта для импорта товаров"
     is_input: true
     min: 0
-    max: "TF15 - TF16"
+    max: "max(TF15 - TF16, 0)"
     depends_on: ["TF15", "TF16"]
     decision_group: "import_distribution"
 
