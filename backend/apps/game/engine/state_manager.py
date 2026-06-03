@@ -6,7 +6,7 @@
 """
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 
@@ -84,7 +84,7 @@ class GameStateManager:
     - Генерацию полного отчёта о состоянии игры
     """
 
-    def __init__(self, calculator: Optional[GameCalculator] = None):
+    def __init__(self, calculator: GameCalculator | None = None):
         """
         Инициализация менеджера состояния.
 
@@ -150,7 +150,7 @@ class GameStateManager:
             result.append(inp)
         return result
 
-    def _get_stage_for_param(self, param_name: str) -> tuple[Optional[str], Optional[dict]]:
+    def _get_stage_for_param(self, param_name: str) -> tuple[str | None, dict | None]:
         """Находит этап, к которому относится параметр."""
         for stage_key, stage_config in self._iter_decision_stages():
             inputs = self._get_stage_inputs(
@@ -650,9 +650,9 @@ class GameStateManager:
         param_name: str,
         value: float,
         history: list[dict[str, float]],
-        user_inputs: list[str] = None,
+        user_inputs: list[str] | None = None,
         force: bool = False,
-    ) -> tuple[bool, Optional[str], dict[str, float]]:
+    ) -> tuple[bool, str | None, dict[str, float]]:
         """
         Устанавливает значение параметра с валидацией.
 
@@ -831,7 +831,7 @@ class GameStateManager:
 
 
 # Глобальный экземпляр менеджера состояния
-_state_manager: Optional[GameStateManager] = None
+_state_manager: GameStateManager | None = None
 
 
 def get_state_manager() -> GameStateManager:

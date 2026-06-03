@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from decimal import Decimal, ROUND_HALF_UP
 from statistics import mean
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 from simpleeval import SimpleEval
@@ -295,7 +295,7 @@ class GameCalculator:
         param_name: str,
         value: float,
         history: list[dict[str, float]],
-    ) -> tuple[bool, Optional[str], Optional[tuple[float, float]]]:
+    ) -> tuple[bool, str | None, tuple[float, float] | None]:
         """
         Проверяет корректность вводимого значения.
 
@@ -346,7 +346,7 @@ class GameCalculator:
         params: dict[str, float],
         param_name: str,
         history: list[dict[str, float]],
-    ) -> tuple[Optional[float], Optional[float]]:
+    ) -> tuple[float | None, float | None]:
         """
         Возвращает текущие границы для параметра.
 
@@ -406,7 +406,7 @@ class GameCalculator:
         bound_expr: Any,
         params: dict[str, float],
         history: list[dict[str, float]],
-    ) -> Optional[float]:
+    ) -> float | None:
         """Вычисляет значение границы."""
         if bound_expr is None:
             return None
@@ -618,7 +618,7 @@ class GameCalculator:
     def _resolve_profile_config(
         self,
         difficulty: str,
-        visited: Optional[set[str]] = None,
+        visited: set[str] | None = None,
     ) -> dict[str, Any]:
         """Разрешает профиль сложности вместе со служебной metadata."""
         if difficulty in self._resolved_profile_configs:
@@ -1065,7 +1065,7 @@ class GameCalculator:
     def _resolve_initial_profile(
         self,
         difficulty: str,
-        visited: Optional[set[str]] = None,
+        visited: set[str] | None = None,
     ) -> dict[str, float]:
         """Разрешает профиль сложности с поддержкой extends."""
         return self._resolve_profile_config(difficulty, visited).get("overrides", {})
@@ -1088,7 +1088,7 @@ class GameCalculator:
 
 
 # Глобальный экземпляр калькулятора
-_calculator: Optional[GameCalculator] = None
+_calculator: GameCalculator | None = None
 
 
 def get_calculator() -> GameCalculator:

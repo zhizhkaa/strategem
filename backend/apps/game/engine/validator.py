@@ -11,7 +11,6 @@
 import ast
 import re
 from pathlib import Path
-from typing import Optional
 
 import yaml
 
@@ -306,7 +305,7 @@ class FormulaValidator:
         old_errors = self._errors
         self._errors = []
 
-        is_valid = self._validate_expression(formula, "Формула", "inline")
+        self._validate_expression(formula, "Формула", "inline")
 
         errors = self._errors
         self._errors = old_errors
@@ -327,7 +326,6 @@ class FormulaValidator:
             if isinstance(section, dict):
                 for param_name, formula in section.items():
                     if isinstance(formula, str):
-                        deps = self._extract_variables(formula)
                         # Убираем ссылки на prev() - они не создают циклов в текущем периоде
                         formula_without_prev = re.sub(r"prev\s*\([^)]+\)", "", formula)
                         current_deps = self._extract_variables(formula_without_prev)
@@ -338,7 +336,7 @@ class FormulaValidator:
         visited = set()
         rec_stack = set()
 
-        def dfs(node: str, path: list[str]) -> Optional[list[str]]:
+        def dfs(node: str, path: list[str]) -> list[str] | None:
             if node in rec_stack:
                 cycle_start = path.index(node)
                 return path[cycle_start:] + [node]
@@ -371,7 +369,7 @@ class FormulaValidator:
 
 
 # Глобальный экземпляр валидатора
-_validator: Optional[FormulaValidator] = None
+_validator: FormulaValidator | None = None
 
 
 def get_validator() -> FormulaValidator:

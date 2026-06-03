@@ -1,9 +1,13 @@
+"""Django admin configuration for games and game periods."""
+
 from django.contrib import admin
 
 from .models import Game, GamePeriod
 
 
 class GamePeriodInline(admin.TabularInline):
+    """Readonly inline list of periods on the game admin page."""
+
     model = GamePeriod
     extra = 0
     fields = ["period_number"]
@@ -14,6 +18,8 @@ class GamePeriodInline(admin.TabularInline):
 
 @admin.register(Game)
 class GameAdmin(admin.ModelAdmin):
+    """Admin page for game lifecycle, difficulty, and related team."""
+
     list_display = [
         "id",
         "team",
@@ -25,7 +31,12 @@ class GameAdmin(admin.ModelAdmin):
         "updated_at",
     ]
     search_fields = ["team__name", "team__group__name"]
-    list_filter = ["status", "difficulty", "created_at", "team__group__faculty"]
+    list_filter = [
+        "status",
+        "difficulty",
+        "created_at",
+        "team__group__faculty",
+    ]
     ordering = ["-created_at"]
     autocomplete_fields = ["team"]
     inlines = [GamePeriodInline]
@@ -33,6 +44,8 @@ class GameAdmin(admin.ModelAdmin):
 
 @admin.register(GamePeriod)
 class GamePeriodAdmin(admin.ModelAdmin):
+    """Admin page for inspecting all parameter values in a period."""
+
     list_display = ["id", "game", "period_number"]
     search_fields = ["game__team__name", "period_number"]
     list_filter = ["game__status", "period_number"]

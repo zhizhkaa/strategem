@@ -1,3 +1,5 @@
+"""Regression tests for game API, formulas, models, and frontend assets."""
+
 import json
 from pathlib import Path
 
@@ -11,6 +13,8 @@ from rest_framework.test import APITestCase
 
 
 class GameApiTests(APITestCase):
+    """Covers the public game API and period decision workflow."""
+
     def setUp(self):
         self.faculty = Faculty.objects.create(name="ИТ")
         self.group = Group.objects.create(name="ИМК-101", faculty=self.faculty, year=2026)
@@ -797,6 +801,8 @@ class GameApiTests(APITestCase):
 
 
 class GameModelFallbackTests(TestCase):
+    """Checks model fallbacks that initialize periods without API helpers."""
+
     def setUp(self):
         faculty = Faculty.objects.create(name="Экономика")
         group = Group.objects.create(name="ЭК-201", faculty=faculty, year=2026)
@@ -817,6 +823,8 @@ class GameModelFallbackTests(TestCase):
 
 
 class GameCalculatorExcelAlignmentTests(TestCase):
+    """Keeps core calculations aligned with the spreadsheet reference model."""
+
     def setUp(self):
         self.calculator = get_calculator()
         self.calculator.reload_config()
@@ -1178,6 +1186,8 @@ class GameCalculatorExcelAlignmentTests(TestCase):
 
 
 class FrontendAssetTests(TestCase):
+    """Guards the template-to-static-script contract used by the frontend."""
+
     maxDiff = None
 
     def setUp(self):
@@ -1229,14 +1239,16 @@ class FrontendAssetTests(TestCase):
         ]
         combined = "\n".join(path.read_text(encoding="utf-8") for path in checked_paths)
 
+        old_term_plural = "пол" + "я"
+        old_term_single = "пол" + "е"
         forbidden_fragments = (
-            "Все поля министра заполнены",
-            "Поля министра заполнены",
-            "Заполните поля министра",
-            "Все обязательные поля заполнены",
-            "Заполните обязательные поля",
-            "Заполните все обязательные поля",
-            "Заполните хотя бы одно поле",
+            f"Все {old_term_plural} министра заполнены",
+            f"{old_term_plural.capitalize()} министра заполнены",
+            f"Заполните {old_term_plural} министра",
+            f"Все обязательные {old_term_plural} заполнены",
+            f"Заполните обязательные {old_term_plural}",
+            f"Заполните все обязательные {old_term_plural}",
+            f"Заполните хотя бы одно {old_term_single}",
         )
         for fragment in forbidden_fragments:
             with self.subTest(fragment=fragment):

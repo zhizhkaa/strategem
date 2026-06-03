@@ -311,8 +311,6 @@ class BatchParameterView(APIView):
         serializer.is_valid(raise_exception=True)
 
         parameters = serializer.validated_data["parameters"]
-        minister_key = serializer.validated_data.get("minister")
-
         try:
             game = Game.objects.select_related("team").get(id=game_id)
         except Game.DoesNotExist:

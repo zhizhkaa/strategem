@@ -5,8 +5,9 @@
 функции для вычисления интерполированных значений.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Optional
 
 import yaml
 
@@ -19,7 +20,7 @@ class Interpolator:
     массивы x и y для каждой именованной таблицы.
     """
 
-    _instance: Optional["Interpolator"] = None
+    _instance: Interpolator | None = None
     _tables: dict = {}
 
     def __new__(cls) -> "Interpolator":
@@ -146,8 +147,8 @@ class Interpolator:
         self,
         table_name: str,
         x: float,
-        min_result: Optional[float] = None,
-        max_result: Optional[float] = None,
+        min_result: float | None = None,
+        max_result: float | None = None,
     ) -> float:
         """
         Интерполяция с ограничением результата.
@@ -173,7 +174,7 @@ class Interpolator:
 
 
 # Глобальный экземпляр для удобного доступа
-_interpolator: Optional[Interpolator] = None
+_interpolator: Interpolator | None = None
 
 
 def get_interpolator() -> Interpolator:

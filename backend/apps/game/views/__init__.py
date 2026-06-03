@@ -12,12 +12,14 @@ from .admin import (
     TeamGameView,
     calculator_page,
 )
-from .game import (
+from ..decision_structure import (
     MINISTER_CONTEXT_PARAMS,
     MINISTER_INTERPOLATION_KEYS,
     MINISTER_SHORT_NAMES,
     PARAMETER_TARGETS,
     SUMMARY_GROUP_DEFS,
+)
+from .game import (
     GameViewSet,
     _normalize_validation_state,
 )

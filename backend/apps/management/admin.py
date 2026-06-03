@@ -1,3 +1,5 @@
+"""Django admin configuration for faculties, groups, and teams."""
+
 from django.contrib import admin
 
 from .models import Faculty, Group, Team
@@ -5,6 +7,8 @@ from .models import Faculty, Group, Team
 
 @admin.register(Faculty)
 class FacultyAdmin(admin.ModelAdmin):
+    """Admin page for faculties."""
+
     list_display = ["name", "created_at", "updated_at"]
     search_fields = ["name"]
     list_filter = ["created_at"]
@@ -13,6 +17,8 @@ class FacultyAdmin(admin.ModelAdmin):
 
 @admin.register(Group)
 class GroupAdmin(admin.ModelAdmin):
+    """Admin page for student groups."""
+
     list_display = ["name", "faculty", "year", "created_at", "updated_at"]
     search_fields = ["name", "faculty__name"]
     list_filter = ["faculty", "year", "created_at"]
@@ -22,10 +28,14 @@ class GroupAdmin(admin.ModelAdmin):
 
 @admin.register(Team)
 class TeamAdmin(admin.ModelAdmin):
+    """Admin page for teams with faculty and year helpers."""
+
     def faculty(self, obj):
+        """Return the faculty name through the team's group."""
         return obj.group.faculty.name
 
     def year(self, obj):
+        """Return the group year for list display."""
         return obj.group.year
 
     list_display = ["name", "faculty", "group", "created_at", "updated_at"]

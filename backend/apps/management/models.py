@@ -1,9 +1,12 @@
+"""Faculty, group, and team models used to assign games to participants."""
+
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
 
 
 def current_year() -> int:
+    """Return the current calendar year for new group records."""
     return timezone.now().year
 
 

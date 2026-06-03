@@ -297,12 +297,32 @@ class CalculatorCalcView(APIView):
         input_values = request.data.get("parameters", {})
 
         # Проверка заполненности
-        required = ['P9', 'P11', 'P12', 'E21', 'E22', 'E24',
-                     'E26', 'E27', 'G18', 'G19', 'F14',
-                     'TF13', 'TF14', 'TF16', 'TF17']
-        missing = [p for p in required if p not in input_values or input_values[p] is None]
+        required = [
+            "P9",
+            "P11",
+            "P12",
+            "E21",
+            "E22",
+            "E24",
+            "E26",
+            "E27",
+            "G18",
+            "G19",
+            "F14",
+            "TF13",
+            "TF14",
+            "TF16",
+            "TF17",
+        ]
+        missing = [
+            p for p in required
+            if p not in input_values or input_values[p] is None
+        ]
         if missing:
-            return Response({"error": "Не заполнены решения", "missing": missing}, status=400)
+            return Response(
+                {"error": "Не заполнены решения", "missing": missing},
+                status=400,
+            )
 
         # Получить текущий период
         current_period = game.periods.order_by("-period_number").first()

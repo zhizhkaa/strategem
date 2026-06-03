@@ -24,6 +24,8 @@ from rest_framework.test import APITestCase
 
 
 class FacultyTest(TestCase):
+    """Checks faculty model creation and string representation."""
+
     faculty_name = "ИТ"
 
     def setUp(self):
@@ -37,6 +39,8 @@ class FacultyTest(TestCase):
 
 
 class GroupTest(TestCase):
+    """Checks group model creation and string representation."""
+
     faculty_name = "ИТ"
     group_name = "ИМК-101"
     group_year = 2024
@@ -56,6 +60,8 @@ class GroupTest(TestCase):
 
 
 class TeamTest(TestCase):
+    """Checks team model creation and string representation."""
+
     faculty_name = "ИТ"
     group_name = "ИМК-101"
     group_year = 2024
@@ -77,6 +83,8 @@ class TeamTest(TestCase):
 
 
 class APITest(APITestCase):
+    """Checks CRUD entrypoints for management resources."""
+
     faculty_name = "ИТ"
     group_name = "ИМК-101"
     group_year = 2024

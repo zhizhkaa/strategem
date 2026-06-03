@@ -282,7 +282,7 @@ class Game(models.Model):
 
         # Создаём новый период
         self.current_period += 1
-        new_period = GamePeriod.objects.create(
+        GamePeriod.objects.create(
             game=self,
             period_number=self.current_period,
             **{k: v for k, v in new_params.items() if k in PARAMETERS_CONFIG},
@@ -566,7 +566,6 @@ class GamePeriod(models.Model):
         if hasattr(self, param_name) and param_name in PARAMETERS_CONFIG:
             return getattr(self, param_name)
         return None
-
 
 
 class Document(models.Model):
