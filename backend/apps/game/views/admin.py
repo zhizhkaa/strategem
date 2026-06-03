@@ -302,7 +302,7 @@ class CalculatorCalcView(APIView):
                      'TF13', 'TF14', 'TF16', 'TF17']
         missing = [p for p in required if p not in input_values or input_values[p] is None]
         if missing:
-            return Response({"error": "Не заполнены поля", "missing": missing}, status=400)
+            return Response({"error": "Не заполнены решения", "missing": missing}, status=400)
 
         # Получить текущий период
         current_period = game.periods.order_by("-period_number").first()

@@ -1175,3 +1175,71 @@ class GameCalculatorExcelAlignmentTests(TestCase):
                 expected_value,
                 msg=f"{key} differs from Appendix H fixture target",
             )
+
+
+class FrontendAssetTests(TestCase):
+    maxDiff = None
+
+    def setUp(self):
+        self.root = Path(__file__).resolve().parents[3]
+        self.frontend = self.root / "frontend"
+
+    def read_text(self, relative_path: str) -> str:
+        return (self.root / relative_path).read_text(encoding="utf-8")
+
+    def test_page_scripts_are_extracted_from_templates(self):
+        expected_assets = {
+            "frontend/templates/index.html": "js/pages/team-selection.js",
+            "frontend/templates/admin/login.html": "js/pages/admin-login.js",
+            "frontend/templates/admin/panel.html": "js/pages/admin-panel.js",
+            "frontend/templates/admin/calculator.html": "js/pages/calculator.js",
+            "frontend/templates/game/docs.html": "js/pages/docs.js",
+            "frontend/templates/game/play.html": "js/pages/game-play.js",
+            "frontend/templates/game/minister.html": "js/pages/minister.js",
+            "frontend/templates/game/charts.html": "js/pages/charts.js",
+            "frontend/templates/game/status.html": "js/pages/status.js",
+            "frontend/templates/game/results.html": "js/pages/results.js",
+        }
+
+        for template_path, asset_path in expected_assets.items():
+            with self.subTest(template=template_path):
+                template = self.read_text(template_path)
+                self.assertIn(f"{{% static '{asset_path}' %}}", template)
+                self.assertNotRegex(template, r"<script>\s*(?:/\*.*?\*/\s*)?function\s")
+                self.assertTrue((self.frontend / "static" / asset_path).exists())
+
+    def test_shared_api_helper_reports_specific_error_messages(self):
+        app_js = self.read_text("frontend/static/js/app.js")
+
+        for expected_token in (
+            "extractErrorMessage",
+            "Ошибка запроса. Попробуйте ещё раз",
+            "detail",
+            "message",
+            "non_field_errors",
+        ):
+            with self.subTest(token=expected_token):
+                self.assertIn(expected_token, app_js)
+
+    def test_decision_ui_uses_decision_terminology(self):
+        checked_paths = [
+            *(self.frontend / "templates").rglob("*.html"),
+            *(self.frontend / "static" / "js").rglob("*.js"),
+            self.root / "backend" / "apps" / "game" / "views" / "admin.py",
+        ]
+        combined = "\n".join(path.read_text(encoding="utf-8") for path in checked_paths)
+
+        forbidden_fragments = (
+            "Все поля министра заполнены",
+            "Поля министра заполнены",
+            "Заполните поля министра",
+            "Все обязательные поля заполнены",
+            "Заполните обязательные поля",
+            "Заполните все обязательные поля",
+            "Заполните хотя бы одно поле",
+        )
+        for fragment in forbidden_fragments:
+            with self.subTest(fragment=fragment):
+                self.assertNotIn(fragment, combined)
+
+        self.assertIn("Все решения заполнены", combined)

@@ -17,29 +17,7 @@
 
         <!-- Tailwind CSS для стилей -->
         <script src="https://cdn.tailwindcss.com"></script>
-
-        <script>
-            tailwind.config = {
-                theme: {
-                    extend: {
-                        colors: {
-                            strategem: {
-                                50: "#f0f9ff",
-                                100: "#e0f2fe",
-                                200: "#bae6fd",
-                                300: "#7dd3fc",
-                                400: "#38bdf8",
-                                500: "#0ea5e9",
-                                600: "#0284c7",
-                                700: "#0369a1",
-                                800: "#075985",
-                                900: "#0c4a6e",
-                            },
-                        },
-                    },
-                },
-            };
-        </script>
+        <script src="{% static 'js/tailwind-config.js' %}"></script>
 
         <!-- Custom styles -->
         <link rel="stylesheet" href="{% static 'css/main.css' %}" />
@@ -148,120 +126,7 @@
             </template>
         </div>
 
-        <script>
-            // Toast Manager
-            function toastManager() {
-                return {
-                    toasts: [],
-                    addToast(detail) {
-                        const id = Date.now();
-                        this.toasts.push({
-                            id,
-                            message: detail.message,
-                            type: detail.type || "info",
-                            visible: true,
-                        });
-
-                        setTimeout(() => {
-                            this.removeToast(id);
-                        }, detail.duration || 5000);
-                    },
-                    removeToast(id) {
-                        const toast = this.toasts.find((t) => t.id === id);
-                        if (toast) {
-                            toast.visible = false;
-                            setTimeout(() => {
-                                this.toasts = this.toasts.filter(
-                                    (t) => t.id !== id,
-                                );
-                            }, 300);
-                        }
-                    },
-                };
-            }
-
-            // Helper function to show toast
-            function showToast(message, type = "info", duration = 5000) {
-                window.dispatchEvent(
-                    new CustomEvent("show-toast", {
-                        detail: { message, type, duration },
-                    }),
-                );
-            }
-
-            // CSRF token helper
-            function getCookie(name) {
-                let cookieValue = null;
-                if (document.cookie && document.cookie !== "") {
-                    const cookies = document.cookie.split(";");
-                    for (let i = 0; i < cookies.length; i++) {
-                        const cookie = cookies[i].trim();
-                        if (
-                            cookie.substring(0, name.length + 1) ===
-                            name + "="
-                        ) {
-                            cookieValue = decodeURIComponent(
-                                cookie.substring(name.length + 1),
-                            );
-                            break;
-                        }
-                    }
-                }
-                return cookieValue;
-            }
-
-            // API helper
-            const API = {
-                baseUrl: "/api",
-
-                getCSRFToken() {
-                    return getCookie("csrftoken");
-                },
-
-                async get(endpoint) {
-                    const response = await fetch(this.baseUrl + endpoint, {
-                        credentials: "include",
-                    });
-                    if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.error || "Ошибка запроса");
-                    }
-                    return response.json();
-                },
-
-                async post(endpoint, data = {}) {
-                    const response = await fetch(this.baseUrl + endpoint, {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            "X-CSRFToken": this.getCSRFToken(),
-                        },
-                        credentials: "include",
-                        body: JSON.stringify(data),
-                    });
-                    if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.error || "Ошибка запроса");
-                    }
-                    return response.json();
-                },
-
-                async delete(endpoint) {
-                    const response = await fetch(this.baseUrl + endpoint, {
-                        method: "DELETE",
-                        headers: {
-                            "X-CSRFToken": this.getCSRFToken(),
-                        },
-                        credentials: "include",
-                    });
-                    if (!response.ok && response.status !== 204) {
-                        const error = await response.json();
-                        throw new Error(error.error || "Ошибка запроса");
-                    }
-                    return response.status === 204 ? null : response.json();
-                },
-            };
-        </script>
+        <script src="{% static 'js/app.js' %}"></script>
 
         {% block extra_scripts %}{% endblock %}
     </body>

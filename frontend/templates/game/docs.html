@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Стратегема - Документация{% endblock %}
 {% block nav_items %}
 <span
@@ -40,9 +41,16 @@
             </div>
         </div>
 
+        <div
+            x-show="error"
+            class="bg-red-50 border border-red-200 rounded-md p-4 mb-4"
+        >
+            <p class="text-red-700 text-sm" x-text="error"></p>
+        </div>
+
         <!-- Empty state -->
         <div
-            x-show="filteredDocs.length === 0"
+            x-show="!error && filteredDocs.length === 0"
             class="bg-white rounded-lg shadow-md p-12 text-center"
         >
             <svg class="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -52,7 +60,7 @@
         </div>
 
         <!-- Documents list -->
-        <div x-show="filteredDocs.length > 0" class="grid gap-3">
+        <div x-show="!error && filteredDocs.length > 0" class="grid gap-3">
             <template x-for="doc in filteredDocs" :key="doc.id">
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex items-center justify-between gap-4">
                     <div class="flex items-center gap-3 min-w-0">
@@ -85,45 +93,5 @@
 </div>
 {% endblock %}
 {% block extra_scripts %}
-<script>
-function docsApp() {
-    return {
-        loading: true,
-        documents: [],
-        activeScope: 'general',
-        ministerKey: null,
-        ministerLabel: '',
-
-        get filteredDocs() {
-            if (this.activeScope === 'general') {
-                return this.documents.filter(d => d.scope === 'general');
-            }
-            return this.documents.filter(d => d.scope === 'minister' && d.minister === this.activeScope);
-        },
-
-        async init() {
-            // Определяем министра из URL (если открыта со страницы министра)
-            const params = new URLSearchParams(window.location.search);
-            this.ministerKey = params.get('minister') || null;
-            if (this.ministerKey) {
-                this.activeScope = this.ministerKey;
-                const labels = {
-                    population: 'Населения',
-                    energy: 'Энергетики',
-                    industry: 'Промышленности',
-                    agriculture: 'С/х',
-                    trade_finance: 'Торговли и финансов',
-                };
-                this.ministerLabel = labels[this.ministerKey] || this.ministerKey;
-            }
-
-            try {
-                const data = await API.get('/documents/');
-                this.documents = data.documents || [];
-            } catch (_) {}
-            this.loading = false;
-        },
-    };
-}
-</script>
+<script src="{% static 'js/pages/docs.js' %}"></script>
 {% endblock %}
