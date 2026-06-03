@@ -1220,16 +1220,25 @@ class FrontendAssetTests(TestCase):
 
     def test_shared_api_helper_reports_specific_error_messages(self):
         app_js = self.read_text("frontend/static/js/app.js")
+        base_html = self.read_text("frontend/templates/base.html")
 
         for expected_token in (
             "extractErrorMessage",
+            "formatErrorPayload",
             "Ошибка запроса. Попробуйте ещё раз",
+            "MAX_INLINE_ERRORS",
+            "apiErrorDetails",
             "detail",
             "message",
             "non_field_errors",
+            "ещё ${hiddenCount}",
         ):
             with self.subTest(token=expected_token):
                 self.assertIn(expected_token, app_js)
+
+        for expected_token in ("Показать все", "detailModal", "Ошибки в решениях"):
+            with self.subTest(token=expected_token):
+                self.assertIn(expected_token, base_html + app_js)
 
     def test_decision_ui_uses_decision_terminology(self):
         checked_paths = [

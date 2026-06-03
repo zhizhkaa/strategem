@@ -253,12 +253,22 @@ function ministerApp(ministerKey) {
 
                 if (!response.success) {
                     this.paramErrors = {};
-                    for (const [param, msg] of Object.entries(response.errors)) {
+                    const responseErrors = response.errors || {};
+                    for (const [param, msg] of Object.entries(responseErrors)) {
                         this.paramErrors[param] = msg;
                     }
-                    showToast(`Ошибки в ${Object.keys(response.errors).length} параметрах`, 'error');
-                    console.debug('Batch validation errors:', response.errors);
-                    const firstError = Object.keys(response.errors)[0];
+                    const formatted = formatErrorPayload(
+                        { errors: responseErrors },
+                        `Ошибки в ${Object.keys(responseErrors).length} параметрах`,
+                    );
+                    showToast({
+                        message: formatted.message,
+                        type: 'error',
+                        details: formatted.details,
+                        detailsTitle: 'Ошибки в решениях',
+                    });
+                    console.debug('Batch validation errors:', responseErrors);
+                    const firstError = Object.keys(responseErrors)[0];
                     const el = document.querySelector(`[data-param="${firstError}"]`);
                     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     return;
@@ -271,7 +281,7 @@ function ministerApp(ministerKey) {
                 showToast('Значения министра сохранены', 'success');
                 this.submitResult = { success: true };
             } catch (e) {
-                showToast(e.message || 'Ошибка при отправке', 'error');
+                showToast(e || 'Ошибка при отправке', 'error');
             } finally {
                 this.submitting = false;
             }

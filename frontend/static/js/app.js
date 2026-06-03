@@ -1,19 +1,33 @@
 (function () {
+    const MAX_INLINE_ERRORS = 3;
+
     function toastManager() {
         return {
             toasts: [],
+            detailModal: null,
             addToast(detail) {
                 const id = Date.now();
                 this.toasts.push({
                     id,
                     message: detail.message,
                     type: detail.type || "info",
+                    details: detail.details || [],
+                    detailsTitle: detail.detailsTitle || "Подробности",
                     visible: true,
                 });
 
                 setTimeout(() => {
                     this.removeToast(id);
                 }, detail.duration || 5000);
+            },
+            openDetails(toast) {
+                this.detailModal = {
+                    title: toast.detailsTitle || "Подробности",
+                    items: toast.details || [],
+                };
+            },
+            closeDetails() {
+                this.detailModal = null;
             },
             removeToast(id) {
                 const toast = this.toasts.find((t) => t.id === id);
@@ -27,10 +41,35 @@
         };
     }
 
+    function normalizeToastDetail(message, type, duration) {
+        if (message && typeof message === "object") {
+            const details = message.details || message.apiErrorDetails || [];
+            return {
+                message: message.message || "Ошибка",
+                type: message.type || type || "info",
+                duration: message.duration || duration || 5000,
+                details: Array.isArray(details) ? details : [],
+                detailsTitle:
+                    message.detailsTitle ||
+                    message.apiErrorDetailsTitle ||
+                    "Подробности",
+            };
+        }
+
+        return {
+            message,
+            type: type || "info",
+            duration: duration || 5000,
+            details: [],
+            detailsTitle: "Подробности",
+        };
+    }
+
     function showToast(message, type = "info", duration = 5000) {
+        const detail = normalizeToastDetail(message, type, duration);
         window.dispatchEvent(
             new CustomEvent("show-toast", {
-                detail: { message, type, duration },
+                detail,
             }),
         );
     }
@@ -74,9 +113,38 @@
         return [];
     }
 
-    function extractErrorMessage(payload, fallback) {
-        if (!payload) return fallback;
-        if (typeof payload === "string") return payload.trim() || fallback;
+    function pluralizeErrorCount(count) {
+        const mod10 = count % 10;
+        const mod100 = count % 100;
+        if (mod10 === 1 && mod100 !== 11) return "ошибка";
+        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+            return "ошибки";
+        }
+        return "ошибок";
+    }
+
+    function summarizeErrorValues(values, fallback) {
+        if (!values.length) {
+            return { message: fallback, details: [] };
+        }
+
+        if (values.length <= MAX_INLINE_ERRORS) {
+            return { message: values.join("; "), details: [] };
+        }
+
+        const hiddenCount = values.length - MAX_INLINE_ERRORS;
+        const suffix = `ещё ${hiddenCount} ${pluralizeErrorCount(hiddenCount)}`;
+        return {
+            message: `${values.slice(0, MAX_INLINE_ERRORS).join("; ")}; ${suffix}`,
+            details: values,
+        };
+    }
+
+    function formatErrorPayload(payload, fallback) {
+        if (!payload) return { message: fallback, details: [] };
+        if (typeof payload === "string") {
+            return { message: payload.trim() || fallback, details: [] };
+        }
 
         const directMessage =
             payload.error ||
@@ -84,15 +152,19 @@
             payload.message ||
             payload.non_field_errors;
         const directValues = flattenErrorValues(directMessage);
-        if (directValues.length) return directValues.join("; ");
+        if (directValues.length) return summarizeErrorValues(directValues, fallback);
 
         if (payload.errors) {
             const errorValues = flattenErrorValues(payload.errors);
-            if (errorValues.length) return errorValues.join("; ");
+            if (errorValues.length) return summarizeErrorValues(errorValues, fallback);
         }
 
         const payloadValues = flattenErrorValues(payload);
-        return payloadValues.length ? payloadValues.join("; ") : fallback;
+        return summarizeErrorValues(payloadValues, fallback);
+    }
+
+    function extractErrorMessage(payload, fallback) {
+        return formatErrorPayload(payload, fallback).message;
     }
 
     async function parseApiError(response, fallback) {
@@ -110,9 +182,15 @@
             payload = null;
         }
 
-        const message = extractErrorMessage(payload, defaultMessage);
+        const formatted = formatErrorPayload(payload, defaultMessage);
+        const message = formatted.message;
         const statusPrefix = response.status ? `${response.status}: ` : "";
-        return new Error(message === defaultMessage ? statusPrefix + message : message);
+        const error = new Error(
+            message === defaultMessage ? statusPrefix + message : message,
+        );
+        error.apiErrorDetails = formatted.details;
+        error.apiErrorDetailsTitle = "Ошибки в решениях";
+        return error;
     }
 
     async function parseResponse(response) {
@@ -170,6 +248,7 @@
     window.showToast = showToast;
     window.getCookie = getCookie;
     window.extractErrorMessage = extractErrorMessage;
+    window.formatErrorPayload = formatErrorPayload;
     window.parseApiError = parseApiError;
     window.API = API;
 })();

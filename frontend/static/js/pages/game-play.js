@@ -182,7 +182,16 @@ function gameApp() {
                 if (!batchResponse.success) {
                     this.validationErrors = Object.keys(batchResponse.errors || {});
                     this.validationErrorSet = batchResponse.errors || {};
-                    showToast(`Ошибки в ${this.validationErrors.length} параметрах`, 'error');
+                    const formatted = formatErrorPayload(
+                        { errors: batchResponse.errors || {} },
+                        `Ошибки в ${this.validationErrors.length} параметрах`,
+                    );
+                    showToast({
+                        message: formatted.message,
+                        type: 'error',
+                        details: formatted.details,
+                        detailsTitle: 'Ошибки в решениях',
+                    });
                     console.debug('Batch validation errors:', batchResponse.errors);
                     this.processingAction = false;
                     return;
@@ -229,7 +238,7 @@ function gameApp() {
                     showToast(result.error || 'Ошибка', 'error');
                 }
             } catch (e) {
-                showToast(e.message || 'Ошибка', 'error');
+                showToast(e || 'Ошибка', 'error');
             } finally {
                 this.processingAction = false;
             }
