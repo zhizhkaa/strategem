@@ -328,9 +328,6 @@ poetry.toml
 # ruff
 .ruff_cache/
 
-# LSP config files
-pyrightconfig.json
-
 ### Vue ###
 # gitignore template for Vue.js projects
 #

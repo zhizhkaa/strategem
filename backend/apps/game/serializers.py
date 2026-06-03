@@ -447,7 +447,7 @@ class ChartDataSerializer(serializers.Serializer):
 
     parameter = serializers.CharField()
     verbose_name = serializers.CharField()
-    data = ChartDataPointSerializer(many=True)
+    data = ChartDataPointSerializer(many=True)  # type: ignore[assignment]
 
 
 class GameChartsSerializer(serializers.Serializer):
@@ -519,7 +519,7 @@ class BatchParameterUpdateResponseSerializer(serializers.Serializer):
     success = serializers.BooleanField()
     updated_parameters = serializers.DictField(child=serializers.FloatField())
     auto_calculated = serializers.DictField(child=serializers.FloatField())
-    errors = serializers.DictField(
+    errors = serializers.DictField(  # type: ignore[assignment]
         child=serializers.CharField(),
         help_text="Словарь {код_параметра: текст_ошибки}"
     )

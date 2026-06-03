@@ -7,6 +7,8 @@
 - DocumentView, DocumentDeleteView — управление документацией
 """
 
+from typing import Any, cast
+
 from django.conf import settings
 from django.shortcuts import render
 from django.utils.decorators import method_decorator
@@ -47,7 +49,8 @@ class AdminLoginView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        password = serializer.validated_data["password"]
+        validated_data = cast(dict[str, Any], serializer.validated_data)
+        password = validated_data["password"]
 
         # Получаем пароль из настроек или используем значение по умолчанию
         admin_password = getattr(settings, "ADMIN_PASSWORD", "admin123")

@@ -220,7 +220,7 @@ class GameStateManager:
         history: list[dict[str, float]],
         current_period: int,
         total_periods: int,
-        user_inputs: list[str] = None,
+        user_inputs: list[str] | None = None,
     ) -> dict[str, Any]:
         """
         Возвращает полное состояние игры.
@@ -275,7 +275,7 @@ class GameStateManager:
         params: dict[str, float],
         decision_state: DecisionState,
         history: list[dict[str, float]],
-        user_inputs: list[str] = None,
+        user_inputs: list[str] | None = None,
     ) -> dict[str, dict[str, Any]]:
         """
         Возвращает состояние всех параметров с метаданными.
@@ -379,6 +379,9 @@ class GameStateManager:
                 if isinstance(req, dict):
                     category = req.get("category")
                     level = req.get("level", 0)
+                    if not isinstance(category, str):
+                        requirements_met = False
+                        break
                     if not decision_state.check(category, level):
                         requirements_met = False
                         break
@@ -416,8 +419,8 @@ class GameStateManager:
     def _get_available_stages(
         self,
         decision_state: DecisionState,
-        params: dict[str, float] = None,
-        user_inputs: list[str] = None,
+        params: dict[str, float] | None = None,
+        user_inputs: list[str] | None = None,
     ) -> list[dict]:
         """
         Возвращает список доступных этапов решений.
@@ -431,7 +434,8 @@ class GameStateManager:
             Список этапов с информацией о требованиях и статусе
         """
         if params is None:
-            params = getattr(self, "_current_params", {})
+            current_params = getattr(self, "_current_params", {})
+            params = current_params if isinstance(current_params, dict) else {}
         if user_inputs is None:
             user_inputs = []
         stages = []
@@ -449,6 +453,10 @@ class GameStateManager:
                 if isinstance(req, dict):
                     category = req.get("category")
                     level = req.get("level", 0)
+                    if not isinstance(category, str):
+                        requirements_met = False
+                        missing_requirements.append(f"{category} >= {level}")
+                        continue
                     if not decision_state.check(category, level):
                         requirements_met = False
                         missing_requirements.append(f"{category} >= {level}")
@@ -535,7 +543,7 @@ class GameStateManager:
         return stages
 
     def _get_next_actions(
-        self, decision_state: DecisionState, user_inputs: list[str] = None
+        self, decision_state: DecisionState, user_inputs: list[str] | None = None
     ) -> list[dict]:
         """
         Возвращает список рекомендуемых следующих действий.
@@ -568,7 +576,7 @@ class GameStateManager:
         return actions
 
     def _can_advance_period(
-        self, decision_state: DecisionState, user_inputs: list[str] = None
+        self, decision_state: DecisionState, user_inputs: list[str] | None = None
     ) -> bool:
         """
         Проверяет, можно ли перейти к следующему периоду.
@@ -761,7 +769,7 @@ class GameStateManager:
         decision_state: DecisionState,
         param_name: str,
         params: dict[str, float],
-        user_inputs: list[str] = None,
+        user_inputs: list[str] | None = None,
     ) -> None:
         """
         Обновляет состояние решений после ввода параметра.
@@ -788,6 +796,8 @@ class GameStateManager:
         all_filled = True
         for inp in inputs:
             p = inp.get("param")
+            if not isinstance(p, str):
+                continue
             config = self._parameters_config.get(p, {})
             default = config.get("default", 0) if isinstance(config, dict) else 0
             current_value = params.get(p, default)

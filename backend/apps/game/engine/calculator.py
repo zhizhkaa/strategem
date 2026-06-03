@@ -295,7 +295,7 @@ class GameCalculator:
         param_name: str,
         value: float,
         history: list[dict[str, float]],
-    ) -> tuple[bool, str | None, tuple[float, float] | None]:
+    ) -> tuple[bool, str | None, tuple[float | None, float] | None]:
         """
         Проверяет корректность вводимого значения.
 

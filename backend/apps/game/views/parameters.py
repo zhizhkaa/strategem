@@ -4,6 +4,8 @@ Views для работы с параметрами и состоянием ва
 Включает ParameterView и ValidationStateView.
 """
 
+from typing import Any, cast
+
 from django.db import transaction
 from django.http import Http404
 from django.utils import timezone
@@ -137,7 +139,8 @@ class ParameterView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        value = serializer.validated_data["value"]
+        validated_data = cast(dict[str, Any], serializer.validated_data)
+        value = validated_data["value"]
 
         game = self.get_game(game_id)
 
@@ -310,7 +313,8 @@ class BatchParameterView(APIView):
         serializer = BatchParameterInputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        parameters = serializer.validated_data["parameters"]
+        validated_data = cast(dict[str, Any], serializer.validated_data)
+        parameters = validated_data["parameters"]
         try:
             game = Game.objects.select_related("team").get(id=game_id)
         except Game.DoesNotExist:

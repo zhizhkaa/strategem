@@ -866,8 +866,8 @@ class GameCalculatorExcelAlignmentTests(TestCase):
 
     def test_population_formulas_use_excel_period_references(self):
         params = self.calculator.get_default_parameters()
-        params.update({"P1": 220, "P6": 2, "P7": 10, "G6": 660})
-        history = [{"P1": 200, "P7": 2}]
+        params.update({"P1": 220.0, "P6": 2.0, "P7": 10.0, "G6": 660.0})
+        history = [{"P1": 200.0, "P7": 2.0}]
 
         p7 = self.calculator._evaluate_formula(
             self.calculator._formulas["calc_population"]["P7"],
@@ -890,14 +890,14 @@ class GameCalculatorExcelAlignmentTests(TestCase):
         params = self.calculator.get_default_parameters()
         params.update(
             {
-                "F3": 2000,
+                "F3": 2000.0,
                 "F7": 0.8,
                 "F10": 0.5,
-                "G7": 8,
+                "G7": 8.0,
                 "G11": 0.5,
             }
         )
-        history = [{"F3": 800, "G3": 300}]
+        history = [{"F3": 800.0, "G3": 300.0}]
 
         g8 = self.calculator._evaluate_formula(
             self.calculator._formulas["calc_production_indicators"]["G8"],
@@ -973,14 +973,14 @@ class GameCalculatorExcelAlignmentTests(TestCase):
         self.assertEqual(params["F15"], 0)
 
     def test_high_debt_rule_uses_energy_in_threshold_and_keeps_debt_value(self):
-        params = {"TF1": 600, "P2": 300, "P3": 300, "E7": 1000}
+        params = {"TF1": 600.0, "P2": 300.0, "P3": 300.0, "E7": 1000.0}
 
         self.calculator._apply_special_rules(params, [])
 
         self.assertEqual(params["P3"], 300)
         self.assertEqual(params["TF1"], 600)
 
-        params["TF1"] = 900
+        params["TF1"] = 900.0
         self.calculator._apply_special_rules(params, [])
 
         self.assertEqual(params["P3"], 270)
@@ -1124,8 +1124,8 @@ class GameCalculatorExcelAlignmentTests(TestCase):
 
     def test_f4_and_f5_use_current_environmental_capital_like_legacy_stg(self):
         params = self.calculator.get_default_parameters()
-        params["F6"] = 900
-        history = [{"F6": 600}]
+        params["F6"] = 900.0
+        history = [{"F6": 600.0}]
 
         f4 = self.calculator._evaluate_formula(
             self.calculator._formulas["calc_agriculture"]["F4"],
