@@ -38,6 +38,8 @@ def test_windows_build_excludes_local_runtime_state_from_bundle() -> None:
 def test_windows_workflow_builds_exe_artifact() -> None:
     workflow = read_repo_file(".github/workflows/windows-portable.yml")
 
+    assert "push:" in workflow
+    assert "branches:" in workflow
     assert "actions/setup-python" in workflow
     assert "requirements-windows-build.txt" in workflow
     assert "Strategem.exe" in workflow
