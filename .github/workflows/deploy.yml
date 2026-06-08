@@ -32,7 +32,18 @@ jobs:
 
             git fetch origin main
             git checkout main
+            git sparse-checkout init --no-cone
+            cat > .git/info/sparse-checkout <<'SPARSE'
+            /backend/
+            /frontend/
+            /nginx/
+            /Dockerfile
+            /docker-compose.yml
+            /requirements.txt
+            SPARSE
+            git sparse-checkout reapply
             git pull --ff-only origin main
+            rm -rf dist .tmp
 
             if docker compose version >/dev/null 2>&1; then
               COMPOSE="docker compose"

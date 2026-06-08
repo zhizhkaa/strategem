@@ -55,6 +55,10 @@ def test_deploy_workflow_ignores_windows_packaging_changes() -> None:
     assert "scripts/windows/**" in workflow
     assert "requirements-windows-build.txt" in workflow
     assert ".github/workflows/windows-portable.yml" in workflow
+    assert "git sparse-checkout init --no-cone" in workflow
+    assert "/backend/" in workflow
+    assert "/frontend/" in workflow
+    assert "/Dockerfile" in workflow
 
 
 def test_pyinstaller_launcher_sets_local_runtime_defaults() -> None:
