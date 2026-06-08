@@ -35,6 +35,9 @@ backend/staticfiles/
 backend/data/*.sqlite3
 backend/data/*.sqlite3-journal
 backend/media/
+/data/
+/docs/StratagemmanualEnglish.PDF
+/docs/Расчеты.xlsx
 
 ### Django ###
 *.log
