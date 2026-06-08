@@ -40,6 +40,13 @@ def test_windows_workflow_builds_exe_artifact() -> None:
 
     assert "workflow_dispatch:" in workflow
     assert "tags:" in workflow
+    assert "runs-on: windows-2025-vs2026" in workflow
+    assert "actions/checkout@v5" in workflow
+    assert "actions/setup-node@v5" in workflow
+    assert "actions/setup-python@v6" in workflow
+    assert "actions/checkout@v4" not in workflow
+    assert "actions/setup-node@v4" not in workflow
+    assert "actions/setup-python@v5" not in workflow
     assert "actions/setup-python" in workflow
     assert "requirements-windows-build.txt" in workflow
     assert "Strategem.exe" in workflow
