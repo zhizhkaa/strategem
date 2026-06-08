@@ -2,18 +2,18 @@ name: Build Windows portable package
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag for the Windows package, for example windows-portable-2026-06-08"
+        required: true
+        type: string
   push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/windows-portable.yml"
-      - "backend/**"
-      - "frontend/**"
-      - "package.json"
-      - "package-lock.json"
-      - "requirements.txt"
-      - "requirements-windows-build.txt"
-      - "scripts/windows/**"
+    tags:
+      - "v*"
+      - "windows-*"
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -63,8 +63,25 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path .\dist\Strategem-Windows\* -DestinationPath .\dist\Strategem-Windows.zip -Force
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Strategem-Windows
-          path: dist\Strategem-Windows.zip
+      - name: Resolve release tag
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $tag = "${{ inputs.release_tag }}"
+          } else {
+            $tag = "${{ github.ref_name }}"
+          }
+          if ([string]::IsNullOrWhiteSpace($tag)) { throw "Release tag is required" }
+          "RELEASE_TAG=$tag" >> $env:GITHUB_ENV
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $asset = ".\dist\Strategem-Windows.zip"
+          gh release view $env:RELEASE_TAG *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:RELEASE_TAG --title "Strategem Windows $env:RELEASE_TAG" --notes "Offline Windows portable build for Strategem."
+          }
+          gh release upload $env:RELEASE_TAG $asset --clobber

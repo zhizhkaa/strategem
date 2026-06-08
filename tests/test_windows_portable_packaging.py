@@ -38,12 +38,23 @@ def test_windows_build_excludes_local_runtime_state_from_bundle() -> None:
 def test_windows_workflow_builds_exe_artifact() -> None:
     workflow = read_repo_file(".github/workflows/windows-portable.yml")
 
-    assert "push:" in workflow
-    assert "branches:" in workflow
+    assert "workflow_dispatch:" in workflow
+    assert "tags:" in workflow
     assert "actions/setup-python" in workflow
     assert "requirements-windows-build.txt" in workflow
     assert "Strategem.exe" in workflow
     assert "Strategem-Windows.zip" in workflow
+    assert "gh release upload" in workflow
+    assert "actions/upload-artifact" not in workflow
+
+
+def test_deploy_workflow_ignores_windows_packaging_changes() -> None:
+    workflow = read_repo_file(".github/workflows/deploy.yml")
+
+    assert "paths-ignore:" in workflow
+    assert "scripts/windows/**" in workflow
+    assert "requirements-windows-build.txt" in workflow
+    assert ".github/workflows/windows-portable.yml" in workflow
 
 
 def test_pyinstaller_launcher_sets_local_runtime_defaults() -> None:

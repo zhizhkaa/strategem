@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - ".github/workflows/windows-portable.yml"
+      - "docs/windows-portable.md"
+      - "requirements-windows-build.txt"
+      - "scripts/windows/**"
+      - "tests/test_windows_portable_packaging.py"
 
 jobs:
   deploy:

@@ -39,6 +39,12 @@ Strategem.exe
 
 The local SQLite database is stored in `data\db.sqlite3` next to `Strategem.exe`. Uploaded files are stored in `media`.
 
-## GitHub Actions
+## GitHub Releases
 
-The `Build Windows portable package` workflow can be started manually from GitHub Actions. It uploads `Strategem-Windows.zip` as an artifact.
+The `Build Windows portable package` workflow publishes `Strategem-Windows.zip` to GitHub Releases. It can be started manually with a release tag such as:
+
+```text
+windows-portable-2026-06-08
+```
+
+It also runs for pushed tags matching `v*` or `windows-*`.
