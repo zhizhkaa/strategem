@@ -17,14 +17,35 @@ jobs:
           node-version: "22"
           cache: npm
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-windows-build.txt
+
       - name: Build frontend assets
         run: |
           npm ci
           npm run build
 
+      - name: Install package build tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-windows-build.txt
+
       - name: Build portable app
         shell: pwsh
         run: .\scripts\windows\build-portable.ps1
+
+      - name: Verify executable package
+        shell: pwsh
+        run: |
+          if (-not (Test-Path .\dist\Strategem-Windows\Strategem.exe)) { throw "Strategem.exe was not created" }
+          if (-not (Test-Path .\dist\Strategem-Windows\data)) { throw "data directory was not created" }
+          if (-not (Test-Path .\dist\Strategem-Windows\media)) { throw "media directory was not created" }
 
       - name: Archive portable package
         shell: pwsh

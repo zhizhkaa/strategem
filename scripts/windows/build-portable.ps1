@@ -1,70 +1,95 @@
 param(
-    [string]$PythonVersion = "3.12.13",
-    [string]$OutputDir = "dist\Strategem-Windows"
+    [string]$OutputDir = "dist\Strategem-Windows",
+    [string]$WorkDir = ".tmp\pyinstaller-windows"
 )
 
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $outputPath = Join-Path $repoRoot $OutputDir
-$runtimePath = Join-Path $outputPath "runtime\python"
-$appPath = Join-Path $outputPath "app"
-$downloadsPath = Join-Path $repoRoot ".tmp\portable-windows"
-$pythonZip = Join-Path $downloadsPath "python-$PythonVersion-embed-amd64.zip"
-$getPip = Join-Path $downloadsPath "get-pip.py"
-$pythonUrl = "https://www.python.org/ftp/python/$PythonVersion/python-$PythonVersion-embed-amd64.zip"
-$getPipUrl = "https://bootstrap.pypa.io/get-pip.py"
+$workPath = Join-Path $repoRoot $WorkDir
+$stagingPath = Join-Path $workPath "app"
+$venvPath = Join-Path $workPath "venv"
+$pythonExe = Join-Path $venvPath "Scripts\python.exe"
+$pyinstallerDistPath = Join-Path $workPath "dist"
+$pyinstallerOutputPath = Join-Path $pyinstallerDistPath "Strategem"
+$appExe = Join-Path $outputPath "Strategem.exe"
 
-Write-Host "Building Strategem portable package in $outputPath"
+Write-Host "Building Strategem executable package in $outputPath"
+
+$requiredAssets = @(
+    "frontend\static\css\tailwind.css",
+    "frontend\static\vendor\alpinejs\alpine.min.js",
+    "frontend\static\vendor\chartjs\chart.umd.min.js"
+)
+
+foreach ($asset in $requiredAssets) {
+    $assetPath = Join-Path $repoRoot $asset
+    if (-not (Test-Path $assetPath)) {
+        throw "Missing frontend asset: $asset. Run npm ci and npm run build before packaging."
+    }
+}
 
 Remove-Item -Recurse -Force $outputPath -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Force $runtimePath, $appPath, $downloadsPath | Out-Null
+Remove-Item -Recurse -Force $workPath -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force $workPath | Out-Null
 
-if (-not (Test-Path $pythonZip)) {
-    Write-Host "Downloading Python $PythonVersion embedded runtime..."
-    Invoke-WebRequest -Uri $pythonUrl -OutFile $pythonZip
-}
-
-Write-Host "Extracting Python runtime..."
-Expand-Archive -Path $pythonZip -DestinationPath $runtimePath -Force
-
-$pthFile = Get-ChildItem $runtimePath -Filter "python*._pth" | Select-Object -First 1
-if ($null -ne $pthFile) {
-    $pthContent = Get-Content $pthFile.FullName
-    $pthContent = $pthContent | ForEach-Object {
-        if ($_ -eq "#import site") { "import site" } else { $_ }
-    }
-    Set-Content -Path $pthFile.FullName -Value $pthContent -Encoding ASCII
-}
-
-if (-not (Test-Path $getPip)) {
-    Write-Host "Downloading pip bootstrap..."
-    Invoke-WebRequest -Uri $getPipUrl -OutFile $getPip
-}
-
-$pythonExe = Join-Path $runtimePath "python.exe"
-Write-Host "Installing pip into embedded Python..."
-& $pythonExe $getPip --no-warn-script-location
-
-Write-Host "Installing Python dependencies..."
-& $pythonExe -m pip install --no-warn-script-location -r (Join-Path $repoRoot "requirements.txt")
-
-Write-Host "Copying application files..."
-Copy-Item -Recurse -Force (Join-Path $repoRoot "backend") (Join-Path $appPath "backend")
-Copy-Item -Recurse -Force (Join-Path $repoRoot "frontend") (Join-Path $appPath "frontend")
-Copy-Item -Force (Join-Path $repoRoot "requirements.txt") (Join-Path $appPath "requirements.txt")
-Copy-Item -Force (Join-Path $repoRoot "start-strategem.bat") (Join-Path $outputPath "start-strategem.bat")
-
-Remove-Item -Recurse -Force (Join-Path $appPath "backend\data") -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force (Join-Path $appPath "backend\media") -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force (Join-Path $appPath "backend\staticfiles") -ErrorAction SilentlyContinue
-Get-ChildItem $appPath -Recurse -Directory -Filter "__pycache__" | Remove-Item -Recurse -Force
-Get-ChildItem $appPath -Recurse -File |
+Write-Host "Preparing clean application staging directory..."
+New-Item -ItemType Directory -Force $stagingPath | Out-Null
+Copy-Item -Recurse -Force (Join-Path $repoRoot "backend") (Join-Path $stagingPath "backend")
+Copy-Item -Recurse -Force (Join-Path $repoRoot "frontend") (Join-Path $stagingPath "frontend")
+Remove-Item -Recurse -Force (Join-Path $stagingPath "backend\data") -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force (Join-Path $stagingPath "backend\media") -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force (Join-Path $stagingPath "backend\staticfiles") -ErrorAction SilentlyContinue
+Get-ChildItem $stagingPath -Recurse -Directory -Filter "__pycache__" | Remove-Item -Recurse -Force
+Get-ChildItem $stagingPath -Recurse -File |
     Where-Object { $_.Extension -in ".pyc", ".pyo" } |
     Remove-Item -Force
 
-New-Item -ItemType Directory -Force (Join-Path $appPath "backend\data") | Out-Null
-New-Item -ItemType Directory -Force (Join-Path $appPath "backend\media") | Out-Null
+Write-Host "Creating isolated build virtual environment..."
+python -m venv $venvPath
 
-Write-Host "Portable package is ready: $outputPath"
-Write-Host "Run start-strategem.bat from that folder."
+Write-Host "Installing application and packaging dependencies..."
+& $pythonExe -m pip install --upgrade pip
+& $pythonExe -m pip install -r (Join-Path $repoRoot "requirements.txt")
+& $pythonExe -m pip install -r (Join-Path $repoRoot "requirements-windows-build.txt")
+
+Write-Host "Running PyInstaller..."
+& $pythonExe -m PyInstaller `
+    --noconfirm `
+    --clean `
+    --onedir `
+    --console `
+    --name Strategem `
+    --distpath $pyinstallerDistPath `
+    --workpath (Join-Path $workPath "build") `
+    --specpath (Join-Path $workPath "spec") `
+    --paths (Join-Path $stagingPath "backend") `
+    --add-data "$stagingPath\backend;backend" `
+    --add-data "$stagingPath\frontend;frontend" `
+    --collect-all django `
+    --collect-all rest_framework `
+    --collect-all drf_spectacular `
+    --collect-all corsheaders `
+    --collect-all decouple `
+    --collect-all simpleeval `
+    --collect-all ratelimit `
+    --collect-all psycopg `
+    --hidden-import strategem.settings `
+    --hidden-import strategem.urls `
+    --hidden-import strategem.wsgi `
+    --hidden-import apps.game `
+    --hidden-import apps.management `
+    (Join-Path $repoRoot "scripts\windows\strategem_launcher.py")
+
+Move-Item -Force $pyinstallerOutputPath $outputPath
+
+if (-not (Test-Path $appExe)) {
+    throw "PyInstaller did not create Strategem.exe at $appExe"
+}
+
+New-Item -ItemType Directory -Force (Join-Path $outputPath "data") | Out-Null
+New-Item -ItemType Directory -Force (Join-Path $outputPath "media") | Out-Null
+
+Write-Host "Portable executable package is ready: $outputPath"
+Write-Host "Run Strategem.exe from that folder."

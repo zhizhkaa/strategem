@@ -129,6 +129,7 @@ WSGI_APPLICATION = "strategem.wsgi.application"
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 POSTGRES_DB = config("POSTGRES_DB", default="")
+SQLITE_DATA_DIR = Path(str(config("STRATEGEM_DATA_DIR", default=str(BASE_DIR / "data"))))
 
 if POSTGRES_DB:
     DATABASES = {
@@ -147,7 +148,7 @@ else:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "data" / "db.sqlite3",
+            "NAME": SQLITE_DATA_DIR / "db.sqlite3",
         }
     }
 
@@ -191,7 +192,7 @@ STATICFILES_DIRS = [BASE_DIR.parent / "frontend" / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 MEDIA_URL = "media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = Path(str(config("STRATEGEM_MEDIA_DIR", default=str(BASE_DIR / "media"))))
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
