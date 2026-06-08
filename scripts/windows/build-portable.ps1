@@ -82,6 +82,11 @@ Write-Host "Running PyInstaller..."
     --hidden-import apps.management `
     (Join-Path $repoRoot "scripts\windows\strategem_launcher.py")
 
+if (-not (Test-Path $pyinstallerOutputPath)) {
+    throw "PyInstaller did not create package directory at $pyinstallerOutputPath"
+}
+
+New-Item -ItemType Directory -Force (Split-Path -Parent $outputPath) | Out-Null
 Move-Item -Force $pyinstallerOutputPath $outputPath
 
 if (-not (Test-Path $appExe)) {
