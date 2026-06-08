@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "build:css": "tailwindcss -i ./frontend/styles/tailwind.css -o ./frontend/static/css/tailwind.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.17"
+  }
+}

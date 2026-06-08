@@ -117,6 +117,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "strategem.context_processors.asset_flags",
             ],
         },
     },
@@ -189,6 +190,7 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR.parent / "frontend" / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
+USE_TAILWIND_CDN = DEBUG
 
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"

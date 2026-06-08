@@ -8,6 +8,7 @@ from apps.game.engine import FormulaValidator, get_calculator, get_state_manager
 from apps.game.engine.state_manager import DecisionState
 from apps.game.models import Game, GameDifficulty, GameStatus
 from django.test import TestCase
+from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -1239,6 +1240,23 @@ class FrontendAssetTests(TestCase):
         for expected_token in ("Показать все", "detailModal", "Ошибки в решениях"):
             with self.subTest(token=expected_token):
                 self.assertIn(expected_token, base_html + app_js)
+
+    @override_settings(USE_TAILWIND_CDN=False)
+    def test_production_uses_compiled_tailwind_css(self):
+        response = self.client.get("/")
+        html = response.content.decode("utf-8")
+
+        self.assertNotIn("cdn.tailwindcss.com", html)
+        self.assertIn("/static/css/tailwind.css", html)
+        self.assertTrue((self.frontend / "static" / "css" / "tailwind.css").exists())
+
+    @override_settings(USE_TAILWIND_CDN=True)
+    def test_development_can_use_tailwind_cdn(self):
+        response = self.client.get("/")
+        html = response.content.decode("utf-8")
+
+        self.assertIn("cdn.tailwindcss.com", html)
+        self.assertIn("/static/js/tailwind-config.js", html)
 
     def test_decision_ui_uses_decision_terminology(self):
         checked_paths = [
