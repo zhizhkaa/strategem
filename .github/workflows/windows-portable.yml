@@ -1,0 +1,37 @@
+name: Build Windows portable package
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Build frontend assets
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build portable app
+        shell: pwsh
+        run: .\scripts\windows\build-portable.ps1
+
+      - name: Archive portable package
+        shell: pwsh
+        run: Compress-Archive -Path .\dist\Strategem-Windows\* -DestinationPath .\dist\Strategem-Windows.zip -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Strategem-Windows
+          path: dist\Strategem-Windows.zip

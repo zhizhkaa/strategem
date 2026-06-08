@@ -8,7 +8,6 @@ from apps.game.engine import FormulaValidator, get_calculator, get_state_manager
 from apps.game.engine.state_manager import DecisionState
 from apps.game.models import Game, GameDifficulty, GameStatus
 from django.test import TestCase
-from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -1241,22 +1240,36 @@ class FrontendAssetTests(TestCase):
             with self.subTest(token=expected_token):
                 self.assertIn(expected_token, base_html + app_js)
 
-    @override_settings(USE_TAILWIND_CDN=False)
-    def test_production_uses_compiled_tailwind_css(self):
+    def test_templates_use_local_frontend_assets(self):
         response = self.client.get("/")
         html = response.content.decode("utf-8")
 
-        self.assertNotIn("cdn.tailwindcss.com", html)
         self.assertIn("/static/css/tailwind.css", html)
+        self.assertIn("/static/vendor/alpinejs/alpine.min.js", html)
+        self.assertIn("/static/vendor/chartjs/chart.umd.min.js", html)
         self.assertTrue((self.frontend / "static" / "css" / "tailwind.css").exists())
+        self.assertTrue(
+            (self.frontend / "static" / "vendor" / "alpinejs" / "alpine.min.js").exists()
+        )
+        self.assertTrue(
+            (self.frontend / "static" / "vendor" / "chartjs" / "chart.umd.min.js").exists()
+        )
 
-    @override_settings(USE_TAILWIND_CDN=True)
-    def test_development_can_use_tailwind_cdn(self):
-        response = self.client.get("/")
-        html = response.content.decode("utf-8")
+    def test_templates_do_not_reference_runtime_cdns(self):
+        checked_paths = [
+            *(self.frontend / "templates").rglob("*.html"),
+            *(self.frontend / "static" / "js").rglob("*.js"),
+        ]
+        combined = "\n".join(path.read_text(encoding="utf-8") for path in checked_paths)
 
-        self.assertIn("cdn.tailwindcss.com", html)
-        self.assertIn("/static/js/tailwind-config.js", html)
+        for forbidden in (
+            "cdn.tailwindcss.com",
+            "cdn.jsdelivr.net",
+            "unpkg.com",
+            "cdnjs.cloudflare.com",
+        ):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, combined)
 
     def test_decision_ui_uses_decision_terminology(self):
         checked_paths = [
