@@ -4,13 +4,15 @@
 Включает:
 - AdminLoginView, AdminLogoutView, AdminCheckView — аутентификация админа
 - TeamGameView — получение игры команды
-- DocumentView, DocumentDeleteView — управление документацией
+- DocumentView, DocumentDownloadView, DocumentDeleteView — управление документацией
 """
 
 from typing import Any, cast
 
 from django.conf import settings
+from django.http import FileResponse
 from django.shortcuts import render
+from django.templatetags.static import static
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django_ratelimit.decorators import ratelimit
@@ -22,12 +24,73 @@ from rest_framework.views import APIView
 
 from apps.management.models import Team
 
+from ..engine import get_state_manager
 from ..engine.calculator import get_calculator
 from ..models import Document, Game
+from ..player_documents import PLAYER_DOCUMENT_SLOT_BY_ID, PLAYER_DOCUMENT_SLOTS
 from ..serializers import (
     AdminLoginSerializer,
     GameDetailSerializer,
 )
+
+DOCUMENT_MINISTERS = {
+    "population",
+    "energy",
+    "industry",
+    "agriculture",
+    "trade_finance",
+}
+
+
+def _document_payload(request: Request, doc: Document) -> dict[str, Any]:
+    filename = doc.file.name.split("/")[-1]
+    slot_meta = PLAYER_DOCUMENT_SLOT_BY_ID.get(doc.slot or "")
+    return {
+        "id": doc.id,
+        "slot": doc.slot,
+        "title": slot_meta.title if slot_meta else doc.title,
+        "scope": slot_meta.scope if slot_meta else doc.scope,
+        "minister": slot_meta.minister if slot_meta else doc.minister,
+        "url": request.build_absolute_uri(doc.file.url),
+        "download_url": request.build_absolute_uri(
+            f"/api/documents/{doc.id}/download/"
+        ),
+        "filename": filename,
+        "uploaded_at": doc.uploaded_at.isoformat(),
+        "is_builtin": slot_meta is not None,
+        "uses_default_file": False,
+        "order": slot_meta.order if slot_meta else 1000,
+    }
+
+
+def _builtin_document_payload(request: Request, slot) -> dict[str, Any]:
+    file_url = request.build_absolute_uri(static(slot.static_path))
+    return {
+        "id": None,
+        "slot": slot.slot,
+        "title": slot.title,
+        "scope": slot.scope,
+        "minister": slot.minister,
+        "url": file_url,
+        "download_url": file_url,
+        "filename": slot.filename,
+        "uploaded_at": None,
+        "is_builtin": True,
+        "uses_default_file": True,
+        "order": slot.order,
+    }
+
+
+def _is_truthy(value: str | None) -> bool:
+    return str(value or "").lower() in {"1", "true", "yes", "on"}
+
+
+def _is_pdf_upload(file) -> bool:
+    filename = str(getattr(file, "name", "") or "").lower()
+    content_type = str(getattr(file, "content_type", "") or "").lower()
+    return filename.endswith(".pdf") and (
+        not content_type or content_type == "application/pdf"
+    )
 
 
 class AdminLoginView(APIView):
@@ -120,21 +183,56 @@ class TeamGameView(APIView):
             404: OpenApiResponse(description="Команда не найдена"),
         },
     )
-    def get(self, request: Request, team_id: int) -> Response:
-        """Возвращает игру команды."""
+    def _get_team(self, team_id: int) -> Team | None:
         try:
-            team = Team.objects.get(pk=team_id)
+            return Team.objects.get(pk=team_id)
         except Team.DoesNotExist:
-            return Response(
-                {"error": "Команда не найдена"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            return None
 
+    def _game_response(self, team: Team) -> Response:
         if not hasattr(team, "game") or team.game is None:
             return Response({"game": None})
 
         serializer = GameDetailSerializer(team.game)
         return Response({"game": serializer.data})
+
+    def get(self, request: Request, team_id: int) -> Response:
+        """Возвращает игру команды для админа или уже авторизованной команды."""
+        team = self._get_team(team_id)
+        if team is None:
+            return Response(
+                {"error": "Команда не найдена"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        is_admin = request.session.get("is_admin", False)
+        is_team_session = request.session.get("team_id") == team.id
+        if not is_admin and not is_team_session:
+            return Response(
+                {"error": "Введите пароль команды"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        return self._game_response(team)
+
+    def post(self, request: Request, team_id: int) -> Response:
+        """Проверяет пароль команды и возвращает игру."""
+        team = self._get_team(team_id)
+        if team is None:
+            return Response(
+                {"error": "Команда не найдена"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        provided_password = str(request.data.get("password", ""))
+        if not team.check_access_password(provided_password):
+            return Response(
+                {"error": "Неверный пароль команды"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        request.session["team_id"] = team.id
+        return self._game_response(team)
 
 
 class DocumentView(APIView):
@@ -149,6 +247,7 @@ class DocumentView(APIView):
         """Возвращает список документов."""
         scope = request.query_params.get("scope")
         minister = request.query_params.get("minister")
+        include_builtin = _is_truthy(request.query_params.get("include_builtin"))
 
         qs = Document.objects.all()
         if scope:
@@ -156,18 +255,30 @@ class DocumentView(APIView):
         if minister:
             qs = qs.filter(minister=minister)
 
-        docs = [
-            {
-                "id": d.id,
-                "title": d.title,
-                "scope": d.scope,
-                "minister": d.minister,
-                "url": request.build_absolute_uri(d.file.url),
-                "filename": d.file.name.split("/")[-1],
-                "uploaded_at": d.uploaded_at.isoformat(),
+        docs = []
+        if include_builtin:
+            slot_ids = [slot.slot for slot in PLAYER_DOCUMENT_SLOTS]
+            overrides = {
+                doc.slot: doc
+                for doc in Document.objects.filter(slot__in=slot_ids)
             }
-            for d in qs
-        ]
+            for slot in PLAYER_DOCUMENT_SLOTS:
+                override = overrides.get(slot.slot)
+                payload = (
+                    _document_payload(request, override)
+                    if override is not None
+                    else _builtin_document_payload(request, slot)
+                )
+                if scope and payload["scope"] != scope:
+                    continue
+                if minister and payload["minister"] != minister:
+                    continue
+                docs.append(payload)
+
+            qs = qs.filter(slot__isnull=True)
+
+        docs.extend(_document_payload(request, d) for d in qs)
+        docs.sort(key=lambda item: (item.get("order", 1000), item["title"]))
         return Response({"documents": docs})
 
     def post(self, request: Request) -> Response:
@@ -181,32 +292,87 @@ class DocumentView(APIView):
         file = request.FILES.get("file")
         if not file:
             return Response({"error": "Файл не передан"}, status=status.HTTP_400_BAD_REQUEST)
+        if not _is_pdf_upload(file):
+            return Response(
+                {"error": "Загружать можно только PDF-файлы"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        slot_id = request.data.get("slot") or None
+        slot_meta = None
+        if slot_id:
+            slot_meta = PLAYER_DOCUMENT_SLOT_BY_ID.get(str(slot_id))
+            if slot_meta is None:
+                return Response(
+                    {"error": "Неизвестный слот документа"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         title = request.data.get("title", file.name)
         scope = request.data.get("scope", "general")
         minister = request.data.get("minister") or None
+        if slot_meta is not None:
+            title = title or slot_meta.title
+            scope = slot_meta.scope
+            minister = slot_meta.minister
 
         if scope not in ("general", "minister"):
             return Response({"error": "Недопустимое значение scope"}, status=status.HTTP_400_BAD_REQUEST)
+        if scope == "general":
+            minister = None
+        elif minister not in DOCUMENT_MINISTERS:
+            return Response(
+                {
+                    "error": (
+                        "Для scope=minister нужно передать minister: "
+                        + ", ".join(sorted(DOCUMENT_MINISTERS))
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        doc = Document.objects.create(
-            title=title,
-            file=file,
-            scope=scope,
-            minister=minister,
-        )
+        if slot_meta is not None:
+            doc = Document.objects.filter(slot=slot_meta.slot).first()
+            if doc is None:
+                doc = Document.objects.create(
+                    title=title or slot_meta.title,
+                    file=file,
+                    slot=slot_meta.slot,
+                    scope=scope,
+                    minister=minister,
+                )
+            else:
+                doc.file.delete(save=False)
+                doc.title = title or slot_meta.title
+                doc.file = file
+                doc.scope = scope
+                doc.minister = minister
+                doc.save()
+        else:
+            doc = Document.objects.create(
+                title=title,
+                file=file,
+                scope=scope,
+                minister=minister,
+            )
 
-        return Response(
-            {
-                "id": doc.id,
-                "title": doc.title,
-                "scope": doc.scope,
-                "minister": doc.minister,
-                "url": request.build_absolute_uri(doc.file.url),
-                "filename": doc.file.name.split("/")[-1],
-                "uploaded_at": doc.uploaded_at.isoformat(),
-            },
-            status=status.HTTP_201_CREATED,
+        return Response(_document_payload(request, doc), status=status.HTTP_201_CREATED)
+
+
+class DocumentDownloadView(APIView):
+    """GET /api/documents/{id}/download/"""
+
+    def get(self, request: Request, doc_id: int) -> FileResponse | Response:
+        try:
+            doc = Document.objects.get(pk=doc_id)
+        except Document.DoesNotExist:
+            return Response({"error": "Документ не найден"}, status=status.HTTP_404_NOT_FOUND)
+
+        filename = doc.file.name.split("/")[-1]
+        return FileResponse(
+            doc.file.open("rb"),
+            as_attachment=True,
+            filename=filename,
         )
 
 
@@ -266,9 +432,7 @@ class CalculatorStateView(APIView):
         interp_tables = calculator.get_interpolation_tables()
 
         # Список input-параметров
-        input_params = ['P9', 'P11', 'P12', 'E20', 'E21', 'E22', 'E24',
-                        'E26', 'E27', 'G18', 'G19', 'F14',
-                        'TF9', 'TF13', 'TF14', 'TF16', 'TF17']
+        input_params = get_state_manager().get_all_input_params()
 
         # Все параметры с названиями
         param_config = calculator.get_parameters_config()
@@ -300,23 +464,7 @@ class CalculatorCalcView(APIView):
         input_values = request.data.get("parameters", {})
 
         # Проверка заполненности
-        required = [
-            "P9",
-            "P11",
-            "P12",
-            "E21",
-            "E22",
-            "E24",
-            "E26",
-            "E27",
-            "G18",
-            "G19",
-            "F14",
-            "TF13",
-            "TF14",
-            "TF16",
-            "TF17",
-        ]
+        required = get_state_manager().get_all_input_params()
         missing = [
             p for p in required
             if p not in input_values or input_values[p] is None
@@ -340,7 +488,24 @@ class CalculatorCalcView(APIView):
             params[k] = float(v)
 
         calculator = get_calculator()
-        errors = calculator.get_decision_residual_errors(params, history)
+        state_manager = get_state_manager()
+        fixed_formula_params = []
+        for param_name in calculator.get_decision_parameter_names():
+            if not calculator.is_fixed_parameter(param_name):
+                continue
+            _stage_key, stage_config = state_manager._get_stage_for_param(param_name)
+            if stage_config is not None and state_manager._is_team_stage(stage_config):
+                continue
+            fixed_formula_params.append(param_name)
+        if fixed_formula_params:
+            params = calculator.apply_decision_formulas(
+                params,
+                history,
+                fixed_formula_params,
+            )
+        errors = calculator.get_decision_residual_errors(
+            params, history, input_values.keys()
+        )
 
         if errors:
             return Response(
@@ -352,7 +517,8 @@ class CalculatorCalcView(APIView):
             )
 
         # Рассчитать
-        calculator.apply_decision_formulas(params, history)
+        if calculator.auto_calculate_decision_residuals():
+            calculator.apply_decision_formulas(params, history)
         current_period.set_parameters(params)
         current_period.user_inputs = sorted(
             set(current_period.user_inputs or [])

@@ -85,7 +85,12 @@ class ParameterView(APIView):
         decision_state = DecisionState()
         decision_state.from_dict(game.get_decision_states())
         state_manager = get_state_manager()
-        fillable = state_manager._get_fillable_params(decision_state)
+        fillable = state_manager._get_fillable_params(
+            decision_state,
+            params=current_period.get_parameters(),
+            user_inputs=current_period.user_inputs,
+            current_period=game.current_period,
+        )
 
         is_input = config.get("is_input", False)
         if is_input:
@@ -192,6 +197,7 @@ class ParameterView(APIView):
             history=history,
             user_inputs=current_period.user_inputs,
             force=force,
+            current_period=game.current_period,
         )
 
         if not success:
@@ -315,6 +321,7 @@ class BatchParameterView(APIView):
 
         validated_data = cast(dict[str, Any], serializer.validated_data)
         parameters = validated_data["parameters"]
+        minister_key = validated_data.get("minister")
         try:
             game = Game.objects.select_related("team").get(id=game_id)
         except Game.DoesNotExist:
@@ -340,6 +347,9 @@ class BatchParameterView(APIView):
         state_manager = get_state_manager()
         current_params = period.get_parameters()
         history = game.get_history()
+        fixed_formula_params = self._get_non_team_fixed_decision_formula_params(
+            calculator, state_manager
+        )
         operator_params = sorted(
             param_name
             for param_name in parameters
@@ -367,10 +377,18 @@ class BatchParameterView(APIView):
         updated_params = dict(current_params)
         auto_calculated = {}
         user_inputs = list(period.user_inputs or [])
+        if fixed_formula_params:
+            user_inputs = [
+                param_name
+                for param_name in user_inputs
+                if param_name not in fixed_formula_params
+            ]
         decision_state = DecisionState()
         decision_state.from_dict(game.get_decision_states())
 
-        ordered_param_names = state_manager.get_batch_processing_order(list(parameters.keys()))
+        ordered_param_names = state_manager.get_batch_processing_order(
+            list(parameters.keys())
+        )
 
         for param_name in ordered_param_names:
             value = parameters[param_name]
@@ -389,19 +407,43 @@ class BatchParameterView(APIView):
                 history=history,
                 user_inputs=user_inputs,
                 force=False,
+                current_period=game.current_period,
             )
             if not success:
                 errors[param_name] = error or "Значение вне допустимого диапазона"
                 continue
 
             updated_params = result_params
+            if fixed_formula_params:
+                updated_params = calculator.apply_decision_formulas(
+                    updated_params,
+                    history,
+                    fixed_formula_params,
+                )
             if param_name not in user_inputs:
                 user_inputs.append(param_name)
-            for changed_param, new_value in result_params.items():
-                if changed_param != param_name and before_apply.get(changed_param) != new_value:
+            for changed_param, new_value in updated_params.items():
+                if (
+                    changed_param != param_name
+                    and before_apply.get(changed_param) != new_value
+                ):
                     auto_calculated[changed_param] = new_value
-                    if changed_param not in user_inputs:
+                    if (
+                        changed_param not in user_inputs
+                        and self._is_team_stage_param(state_manager, changed_param)
+                    ):
                         user_inputs.append(changed_param)
+
+        if fixed_formula_params:
+            before_formulas = dict(updated_params)
+            updated_params = calculator.apply_decision_formulas(
+                updated_params,
+                history,
+                fixed_formula_params,
+            )
+            for changed_param, new_value in updated_params.items():
+                if before_formulas.get(changed_param) != new_value:
+                    auto_calculated[changed_param] = new_value
 
         if errors:
             return Response(
@@ -420,6 +462,50 @@ class BatchParameterView(APIView):
         with transaction.atomic():
             period.set_parameters(updated_params)
             period.user_inputs = user_inputs
+            vs = self._build_validation_state(
+                params=updated_params,
+                user_inputs=user_inputs,
+                decision_state=decision_state,
+                calculator=calculator,
+                state_manager=state_manager,
+                history=history,
+                current_period=game.current_period,
+            )
+            period.validation_state = vs
+            period.save()
+
+        response_errors = {
+            param_name: "Значение нарушает ограничения решения"
+            for param_name in vs.get("errors", [])
+        }
+        response_errors.update(
+            calculator.get_decision_residual_errors(
+                updated_params, history, user_inputs
+            )
+        )
+        if minister_key:
+            param_to_minister = state_manager.get_param_to_minister_map()
+            response_errors = {
+                param_name: message
+                for param_name, message in response_errors.items()
+                if param_to_minister.get(param_name) == minister_key
+            }
+        unique_error_messages = list(dict.fromkeys(response_errors.values()))
+
+        if response_errors:
+            vs = {
+                **vs,
+                "errors": list(response_errors.keys()),
+                "by_minister": self._group_validation_state_by_minister(
+                    state_manager,
+                    list(response_errors.keys()),
+                    vs.get("incomplete", []),
+                ),
+            }
+            period.validation_state = vs
+            period.save(update_fields=["validation_state"])
+
+        if not response_errors:
             game.set_decision_states(decision_state.to_dict())
             game.save(
                 update_fields=[
@@ -429,25 +515,42 @@ class BatchParameterView(APIView):
                     "decision_import",
                 ]
             )
-            vs = self._build_validation_state(
-                params=updated_params,
-                user_inputs=user_inputs,
-                decision_state=decision_state,
-                calculator=calculator,
-                state_manager=state_manager,
-                history=history,
-            )
-            period.validation_state = vs
-            period.save()
 
         return Response(
             {
-                "success": True,
+                "success": len(response_errors) == 0,
                 "updated_parameters": {k: updated_params[k] for k in parameters},
                 "auto_calculated": auto_calculated,
-                "errors": {},
+                "errors": response_errors,
+                "message": unique_error_messages[0]
+                if len(unique_error_messages) == 1
+                else "",
                 "validation_state": _normalize_validation_state(vs),
             }
+        )
+
+    def _get_non_team_fixed_decision_formula_params(
+        self,
+        calculator,
+        state_manager,
+    ) -> list[str]:
+        """Возвращает fixed decision-формулы вне командных этапов."""
+        result = []
+        for param_name in calculator.get_decision_parameter_names():
+            if not calculator.is_fixed_parameter(param_name):
+                continue
+            _stage_key, stage_config = state_manager._get_stage_for_param(param_name)
+            if stage_config is not None and state_manager._is_team_stage(stage_config):
+                continue
+            result.append(param_name)
+        return result
+
+    def _is_team_stage_param(self, state_manager, param_name: str) -> bool:
+        """Проверяет, относится ли параметр к командному этапу."""
+        _stage_key, stage_config = state_manager._get_stage_for_param(param_name)
+        return bool(
+            stage_config is not None
+            and state_manager._is_team_stage(stage_config)
         )
 
     def _build_validation_state(
@@ -459,6 +562,7 @@ class BatchParameterView(APIView):
         calculator,
         state_manager,
         history,
+        current_period=None,
     ):
         """Строит validation_state, пригодный для strict blocking UI."""
         user_inputs = set(user_inputs or [])
@@ -466,10 +570,18 @@ class BatchParameterView(APIView):
 
         for param_name in user_inputs:
             value = params.get(param_name, 0)
-            is_valid, _, _ = calculator.validate_input(params, param_name, value, history)
+            is_valid, _, _ = calculator.validate_input(
+                params,
+                param_name,
+                value,
+                history,
+                user_inputs,
+            )
             if not is_valid:
                 errors.append(param_name)
-        for param_name in calculator.get_decision_residual_errors(params, history):
+        for param_name in calculator.get_decision_residual_errors(
+            params, history, user_inputs
+        ):
             if param_name not in errors:
                 errors.append(param_name)
 
@@ -479,6 +591,7 @@ class BatchParameterView(APIView):
             decision_state=decision_state,
             calculator=calculator,
             state_manager=state_manager,
+            current_period=current_period,
         )
         by_minister = self._group_validation_state_by_minister(
             state_manager, errors, incomplete
@@ -499,6 +612,7 @@ class BatchParameterView(APIView):
         decision_state,
         calculator,
         state_manager,
+        current_period=None,
     ) -> list[str]:
         """Возвращает все блокирующе незаполненные input-параметры текущего периода."""
         if state_manager.parallel_mode:
@@ -509,9 +623,14 @@ class BatchParameterView(APIView):
                 and not calculator.is_fixed_parameter(param)
             ]
 
-        fillable = state_manager._get_fillable_params(decision_state)
+        fillable = state_manager._get_fillable_params(
+            decision_state,
+            params=params,
+            user_inputs=user_inputs,
+            current_period=current_period,
+        )
         stages = state_manager._get_available_stages(
-            decision_state, params, list(user_inputs)
+            decision_state, params, list(user_inputs), current_period
         )
 
         incomplete = []

@@ -9,15 +9,33 @@
 >
     Главная
 </a>
+<a
+    href="/api/docs/"
+    target="_blank"
+    class="hover:bg-strategem-600 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+>
+    API Docs
+</a>
 <button
-    @click="logout()"
+    type="button"
+    x-data="{
+        async logoutAdmin() {
+            try {
+                await API.post('/admin/logout/');
+                window.location.href = '/';
+            } catch (e) {
+                showToast('Ошибка выхода: ' + e.message, 'error');
+            }
+        }
+    }"
+    @click="logoutAdmin()"
     class="hover:bg-strategem-600 px-3 py-2 rounded-md text-sm font-medium transition-colors"
 >
     Выйти
 </button>
 {% endblock %}
 {% block content %}
-<div x-data="adminPanel()" x-init="init()" x-cloak>
+<div x-data="adminPanel()" x-init="initialize()" x-cloak>
     <!-- Loading State -->
     <div
         x-show="loading"
@@ -338,6 +356,7 @@
                                         class="flex items-center justify-end space-x-2"
                                     >
                                         <a
+                                            x-show="game.status !== 'finished'"
                                             href="#"
                                             @click.prevent="viewGame(game)"
                                             class="text-strategem-600 hover:text-strategem-700 p-1"
@@ -453,6 +472,7 @@
                                         </a>
                                         <!-- Состояние страны -->
                                         <a
+                                            x-show="game.status !== 'created'"
                                             :href="'/admin/game/' + game.id + '/status/'"
                                             target="_blank"
                                             class="text-teal-600 hover:text-teal-700 p-1"
@@ -463,6 +483,7 @@
                                             </svg>
                                         </a>
                                         <button
+                                            x-show="game.status !== 'finished'"
                                             @click="confirmDelete(game)"
                                             class="text-red-600 hover:text-red-700 p-1"
                                             title="Удалить игру"
@@ -535,6 +556,14 @@
                                         </svg>
                                     </button>
                                 </div>
+                            </div>
+                            <div class="mt-3">
+                                <button
+                                    type="button"
+                                    @click="openTeamPasswordModal(team)"
+                                    class="px-3 py-1.5 text-xs border border-gray-300 rounded-md hover:bg-gray-50"
+                                    x-text="team.has_access_password ? 'Сменить пароль' : 'Создать пароль'"
+                                ></button>
                             </div>
                         </div>
                     </template>
@@ -627,17 +656,27 @@
                                     </div>
                                     <!-- Teams in this group -->
                                     <template x-for="team in teamsFiltered(group.id)" :key="team.id">
-                                        <div class="flex items-center justify-between pl-12 pr-4 py-1 border-b border-gray-100 last:border-0 hover:bg-blue-50 transition-colors">
-                                            <span class="text-sm text-gray-600" x-text="team.name"></span>
-                                            <button
-                                                @click="confirmDeleteEntity('team', team.id, team.name)"
-                                                class="text-red-400 hover:text-red-600 p-0.5"
-                                                title="Удалить команду"
-                                            >
-                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                                                </svg>
-                                            </button>
+                                        <div class="pl-12 pr-4 py-2 border-b border-gray-100 last:border-0 hover:bg-blue-50 transition-colors">
+                                            <div class="flex items-center justify-between gap-3">
+                                                <span class="text-sm text-gray-600" x-text="team.name"></span>
+                                                <button
+                                                    @click="confirmDeleteEntity('team', team.id, team.name)"
+                                                    class="text-red-400 hover:text-red-600 p-0.5"
+                                                    title="Удалить команду"
+                                                >
+                                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                            <div class="mt-1">
+                                                <button
+                                                    type="button"
+                                                    @click="openTeamPasswordModal(team)"
+                                                    class="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-50"
+                                                    x-text="team.has_access_password ? 'Сменить пароль' : 'Создать пароль'"
+                                                ></button>
+                                            </div>
                                         </div>
                                     </template>
                                     <div
@@ -678,7 +717,7 @@
                 <p class="text-sm">Файлы не загружены</p>
             </div>
             <div x-show="documents.length > 0" class="divide-y divide-gray-100">
-                <template x-for="doc in documents" :key="doc.id">
+                <template x-for="doc in documents" :key="doc.slot || doc.id">
                     <div class="px-4 py-3 flex items-center justify-between gap-3">
                         <div class="min-w-0">
                             <p class="font-medium text-gray-900 text-sm truncate" x-text="doc.title"></p>
@@ -694,14 +733,21 @@
                                 class="px-2.5 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
                             >Открыть</a>
                             <a
-                                :href="doc.url"
+                                :href="doc.download_url || doc.url"
                                 :download="doc.filename"
                                 class="px-2.5 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
                             >Скачать</a>
                             <button
+                                x-show="doc.is_builtin"
+                                @click="openUploadDocModal(doc)"
+                                class="px-2.5 py-1 text-xs bg-teal-100 text-teal-700 rounded hover:bg-teal-200 transition-colors"
+                            >Заменить</button>
+                            <button
+                                x-show="doc.id"
                                 @click="deleteDocument(doc)"
                                 class="px-2.5 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
-                            >Удалить</button>
+                                x-text="doc.is_builtin ? 'Вернуть по умолчанию' : 'Удалить'"
+                            ></button>
                         </div>
                     </div>
                 </template>
@@ -718,13 +764,17 @@
         <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
             <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" @click="showUploadDocModal = false"></div>
             <div class="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6 text-left">
-                <h3 class="text-lg font-bold text-gray-900 mb-4">Загрузить файл</h3>
+                <h3 class="text-lg font-bold text-gray-900 mb-4" x-text="newDoc.slot ? 'Заменить файл' : 'Загрузить файл'"></h3>
                 <div class="space-y-4">
+                    <div x-show="newDoc.slot" class="text-sm text-teal-700 bg-teal-50 border border-teal-200 rounded-md px-3 py-2">
+                        <span x-text="newDoc.title"></span>
+                    </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Файл</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">PDF-файл</label>
                         <input
                             type="file"
-                            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+                            x-ref="docFileInput"
+                            accept=".pdf,application/pdf"
                             @change="onDocFileChange($event)"
                             class="w-full text-sm text-gray-600 border border-gray-300 rounded-md px-3 py-2 file:mr-3 file:py-1 file:px-3 file:border-0 file:text-sm file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100"
                         />
@@ -762,7 +812,7 @@
                     <button @click="showUploadDocModal = false" class="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50">Отмена</button>
                     <button
                         @click="uploadDocument()"
-                        :disabled="uploadingDoc"
+                        :disabled="uploadingDoc || !docFile || (newDoc.scope === 'minister' && !newDoc.minister)"
                         class="px-4 py-2 text-sm text-white bg-teal-600 rounded-md hover:bg-teal-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
                     >
                         <div x-show="uploadingDoc" class="loader" style="width:16px;height:16px"></div>
@@ -959,7 +1009,7 @@
                             required
                         >
                             <option value="10">10 периодов</option>
-                            <option value="15">15 периодов</option>
+                            <option value="12">12 периодов</option>
                         </select>
                     </div>
 
@@ -1402,6 +1452,113 @@
         </div>
     </div>
 
+    <!-- Team Password Modal -->
+    <div
+        x-show="showTeamPasswordModal"
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        class="fixed inset-0 z-50 overflow-y-auto"
+        style="display: none"
+    >
+        <div
+            class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0"
+        >
+            <div
+                class="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+                @click="closeTeamPasswordModal()"
+            ></div>
+            <div
+                class="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6 text-left transform transition-all"
+            >
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-900">
+                            Пароль команды
+                        </h3>
+                        <p
+                            class="text-sm text-gray-500 mt-1"
+                            x-text="teamPasswordModalTeam?.name || ''"
+                        ></p>
+                    </div>
+                    <button
+                        type="button"
+                        @click="closeTeamPasswordModal()"
+                        class="text-gray-400 hover:text-gray-600"
+                    >
+                        <svg
+                            class="w-6 h-6"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"
+                            />
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Новый пароль
+                        </label>
+                        <div class="flex gap-2">
+                            <input
+                                type="text"
+                                x-model="teamPasswordModalValue"
+                                autocomplete="new-password"
+                                class="min-w-0 flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-strategem-500 focus:border-strategem-500"
+                                placeholder="Например: luna-42"
+                            />
+                            <button
+                                type="button"
+                                @click="generateTeamPasswordForModal()"
+                                class="px-3 py-2 text-sm border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                            >
+                                Сгенерировать
+                            </button>
+                        </div>
+                    </div>
+
+                    <div
+                        x-show="teamPasswordModalError"
+                        class="bg-red-50 border border-red-200 rounded-md p-3"
+                    >
+                        <p
+                            class="text-red-700 text-sm"
+                            x-text="teamPasswordModalError"
+                        ></p>
+                    </div>
+
+                    <div class="flex justify-end space-x-3 pt-2">
+                        <button
+                            type="button"
+                            @click="closeTeamPasswordModal()"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+                        >
+                            Отмена
+                        </button>
+                        <button
+                            type="button"
+                            @click="saveTeamPassword()"
+                            :disabled="!canSaveTeamPassword()"
+                            class="px-4 py-2 bg-strategem-600 text-white rounded-md hover:bg-strategem-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                            x-text="savingTeamPasswordModal ? 'Сохранение...' : 'Сохранить'"
+                        ></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Create Team Modal -->
     <div
         x-show="showCreateTeamModal"
@@ -1486,6 +1643,37 @@
                             required
                         />
                     </div>
+                    <div>
+                        <label
+                            class="block text-sm font-medium text-gray-700 mb-2"
+                            >Пароль команды</label
+                        >
+                        <button
+                            x-show="!showCreateTeamPassword"
+                            type="button"
+                            @click="createTeamPassword()"
+                            class="px-3 py-2 text-sm border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                        >
+                            Создать пароль
+                        </button>
+                        <div x-show="showCreateTeamPassword" class="flex gap-2">
+                            <input
+                                type="text"
+                                x-model="newTeam.access_password"
+                                autocomplete="new-password"
+                                class="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-strategem-500 focus:border-strategem-500"
+                                placeholder="Например: luna-42"
+                                required
+                            />
+                            <button
+                                type="button"
+                                @click="newTeam.access_password = generateTeamPassword()"
+                                class="px-3 py-2 text-sm border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                            >
+                                Новый
+                            </button>
+                        </div>
+                    </div>
                     <div
                         x-show="createTeamError"
                         class="bg-red-50 border border-red-200 rounded-md p-3"
@@ -1505,7 +1693,7 @@
                         </button>
                         <button
                             type="submit"
-                            :disabled="!newTeam.group || !newTeam.name || creatingTeam"
+                            :disabled="!newTeam.group || !newTeam.name || newTeam.access_password.trim().length < 6 || creatingTeam"
                             class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                         >
                             <span

@@ -37,7 +37,7 @@ def get_all_parameters() -> dict[str, dict]:
 
 
 PARAMETERS_CONFIG = get_all_parameters()
-ALLOWED_TOTAL_PERIODS = (10, 15)
+ALLOWED_TOTAL_PERIODS = (10, 12)
 
 
 class GameStatus(models.TextChoices):
@@ -100,7 +100,7 @@ class Game(models.Model):
     total_periods = models.PositiveSmallIntegerField(
         default=10,
         verbose_name="Всего периодов",
-        help_text="Количество периодов в игре (10 или 15)",
+        help_text="Количество периодов в игре (10 или 12)",
     )
 
     difficulty = models.CharField(
@@ -578,6 +578,13 @@ class Document(models.Model):
 
     title = models.CharField(max_length=255, verbose_name="Название")
     file = models.FileField(upload_to="documents/", verbose_name="Файл")
+    slot = models.CharField(
+        max_length=64,
+        blank=True,
+        null=True,
+        unique=True,
+        verbose_name="Слот встроенного документа",
+    )
     scope = models.CharField(
         max_length=10,
         choices=SCOPE_CHOICES,

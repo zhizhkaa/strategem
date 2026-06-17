@@ -9,6 +9,8 @@ function teamSelection() {
             selectedFaculty: "",
             selectedGroup: "",
             selectedTeam: "",
+            teamPassword: "",
+            showTeamPassword: false,
 
             // State
             loading: false,
@@ -34,7 +36,9 @@ function teamSelection() {
 
             get canEnterGame() {
                 return (
-                    this.selectedTeam && this.selectedTeamData?.has_active_game
+                    this.selectedTeam
+                    && this.selectedTeamData?.has_active_game
+                    && this.teamPassword.trim().length > 0
                 );
             },
 
@@ -47,7 +51,7 @@ function teamSelection() {
                         await Promise.all([
                             API.get("/faculties/"),
                             API.get("/groups/"),
-                            API.get("/teams/"),
+                            API.get("/teams/?public=1"),
                         ]);
 
                     this.faculties = facultiesRes;
@@ -80,14 +84,47 @@ function teamSelection() {
             onFacultyChange() {
                 this.selectedGroup = "";
                 this.selectedTeam = "";
+                this.teamPassword = "";
+                this.showTeamPassword = false;
             },
 
             onGroupChange() {
                 this.selectedTeam = "";
+                this.teamPassword = "";
+                this.showTeamPassword = false;
             },
 
             onTeamChange() {
                 this.error = null;
+                this.teamPassword = "";
+                this.showTeamPassword = false;
+            },
+
+            teamOptionLabel(team) {
+                if (team.has_finished_game) return `${team.name} (игра завершена)`;
+                return team.has_active_game ? `${team.name} (есть игра)` : team.name;
+            },
+
+            teamStatusMessage() {
+                if (!this.selectedTeamData) return "";
+                if (this.selectedTeamData.has_finished_game) {
+                    return "Команда завершила игру";
+                }
+                if (this.selectedTeamData.has_active_game) {
+                    return "У команды есть активная игра";
+                }
+                return "У команды нет активной игры. Обратитесь к администратору.";
+            },
+
+            teamStatusClass() {
+                if (!this.selectedTeamData) return "";
+                if (this.selectedTeamData.has_finished_game) {
+                    return "text-blue-700 bg-blue-50 border-blue-200";
+                }
+                if (this.selectedTeamData.has_active_game) {
+                    return "text-green-700 bg-green-50 border-green-200";
+                }
+                return "text-yellow-700 bg-yellow-50 border-yellow-200";
             },
 
             async enterGame() {
@@ -106,9 +143,10 @@ function teamSelection() {
                     // Clear view-only mode (player is entering their own game)
                     localStorage.removeItem("strategem_view_only");
 
-                    // Check if team has active game
-                    const response = await API.get(
+                    // Check password and active game
+                    const response = await API.post(
                         `/teams/${this.selectedTeam}/game/`,
+                        { password: this.teamPassword.trim() },
                     );
 
                     if (response.game) {

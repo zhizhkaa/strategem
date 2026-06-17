@@ -7,6 +7,8 @@ function adminPanel() {
             teams: [],
             faculties: [],
             groups: [],
+            documents: [],
+            savingTeamPasswords: {},
 
             // Modal state
             showCreateModal: false,
@@ -14,7 +16,10 @@ function adminPanel() {
             showCreateFacultyModal: false,
             showCreateGroupModal: false,
             showCreateTeamModal: false,
+            showCreateTeamPassword: false,
+            showTeamPasswordModal: false,
             showOperatorModal: false,
+            showUploadDocModal: false,
 
             // Operator parameter state
             operatorGame: null,
@@ -43,9 +48,19 @@ function adminPanel() {
             createGroupError: null,
 
             // Team form state
-            newTeam: { name: "", group: "" },
+            newTeam: { name: "", group: "", access_password: "" },
             creatingTeam: false,
             createTeamError: null,
+            teamPasswordModalTeam: null,
+            teamPasswordModalValue: "",
+            savingTeamPasswordModal: false,
+            teamPasswordModalError: null,
+
+            // Document form state
+            newDoc: { title: "", scope: "general", minister: "", slot: "" },
+            docFile: null,
+            uploadingDoc: false,
+            uploadDocError: null,
 
             // Delete state (игры)
             gameToDelete: null,
@@ -94,7 +109,7 @@ function adminPanel() {
             },
 
             // Lifecycle
-            async init() {
+            async initialize() {
                 await this.checkAdmin();
                 if (this.isAdmin) {
                     await Promise.all([
@@ -102,6 +117,7 @@ function adminPanel() {
                         this.loadTeams(),
                         this.loadFaculties(),
                         this.loadGroups(),
+                        this.loadDocuments(),
                     ]);
                 }
                 this.loading = false;
@@ -127,7 +143,10 @@ function adminPanel() {
 
             async loadTeams() {
                 try {
-                    this.teams = await API.get("/teams/");
+                    const teams = await API.get("/teams/");
+                    this.teams = teams.map((team) => ({
+                        ...team,
+                    }));
                 } catch (e) {
                     showToast("Ошибка загрузки команд: " + e.message, "error");
                 }
@@ -149,6 +168,15 @@ function adminPanel() {
                     this.groups = await API.get("/groups/");
                 } catch (e) {
                     showToast("Ошибка загрузки групп: " + e.message, "error");
+                }
+            },
+
+            async loadDocuments() {
+                try {
+                    const response = await API.get("/documents/?include_builtin=1");
+                    this.documents = response.documents || [];
+                } catch (e) {
+                    showToast("Ошибка загрузки документов: " + e.message, "error");
                 }
             },
 
@@ -313,11 +341,104 @@ function adminPanel() {
                     showToast(labels[type] + ' удалён', 'success');
                     this.showEntityDeleteModal = false;
                     this.entityToDelete = null;
-                    await Promise.all([this.loadFaculties(), this.loadGroups(), this.loadTeams()]);
+                    await Promise.all([
+                        this.loadFaculties(),
+                        this.loadGroups(),
+                        this.loadTeams(),
+                        this.loadGames(),
+                    ]);
                 } catch (e) {
                     showToast('Ошибка удаления: ' + e.message, 'error');
                 } finally {
                     this.deletingEntity = false;
+                }
+            },
+
+            openUploadDocModal(doc = null) {
+                this.newDoc = {
+                    title: doc?.title || "",
+                    scope: doc?.scope || "general",
+                    minister: doc?.minister || "",
+                    slot: doc?.slot || "",
+                };
+                this.docFile = null;
+                this.uploadDocError = null;
+                this.showUploadDocModal = true;
+                this.$nextTick(() => {
+                    if (this.$refs.docFileInput) {
+                        this.$refs.docFileInput.value = "";
+                    }
+                });
+            },
+
+            onDocFileChange(event) {
+                const file = event.target.files?.[0] || null;
+                this.docFile = file;
+                if (file && !this.newDoc.title.trim()) {
+                    this.newDoc.title = file.name.replace(/\.[^.]+$/, "");
+                }
+            },
+
+            async uploadDocument() {
+                if (!this.docFile) {
+                    this.uploadDocError = "Выберите файл";
+                    return;
+                }
+                if (this.newDoc.scope === "minister" && !this.newDoc.minister) {
+                    this.uploadDocError = "Выберите министра";
+                    return;
+                }
+
+                const form = new FormData();
+                form.append("file", this.docFile);
+                form.append("title", this.newDoc.title.trim() || this.docFile.name);
+                form.append("scope", this.newDoc.scope);
+                if (this.newDoc.slot) {
+                    form.append("slot", this.newDoc.slot);
+                }
+                if (this.newDoc.scope === "minister") {
+                    form.append("minister", this.newDoc.minister);
+                }
+
+                this.uploadingDoc = true;
+                this.uploadDocError = null;
+
+                try {
+                    const response = await fetch(API.baseUrl + "/documents/", {
+                        method: "POST",
+                        body: form,
+                        credentials: "include",
+                        headers: {
+                            "X-CSRFToken": API.getCSRFToken(),
+                        },
+                    });
+                    if (!response.ok) {
+                        throw await parseApiError(response);
+                    }
+
+                    showToast("Файл загружен", "success");
+                    this.showUploadDocModal = false;
+                    await this.loadDocuments();
+                } catch (e) {
+                    this.uploadDocError = e.message;
+                } finally {
+                    this.uploadingDoc = false;
+                }
+            },
+
+            async deleteDocument(doc) {
+                if (!doc.id) {
+                    showToast("Стартовый файл можно только заменить", "warning");
+                    return;
+                }
+                if (!window.confirm(`Удалить файл «${doc.title}»?`)) return;
+
+                try {
+                    await API.delete(`/documents/${doc.id}/`);
+                    await this.loadDocuments();
+                    showToast("Файл удалён", "success");
+                } catch (e) {
+                    showToast("Ошибка удаления файла: " + e.message, "error");
                 }
             },
 
@@ -391,13 +512,18 @@ function adminPanel() {
 
             // Team methods
             openCreateTeamModal() {
-                this.newTeam = { name: "", group: "" };
+                this.newTeam = {
+                    name: "",
+                    group: "",
+                    access_password: "",
+                };
+                this.showCreateTeamPassword = false;
                 this.createTeamError = null;
                 this.showCreateTeamModal = true;
             },
 
             async createTeam() {
-                if (!this.newTeam.group || !this.newTeam.name) return;
+                if (!this.newTeam.group || !this.newTeam.name || !this.newTeam.access_password) return;
                 this.creatingTeam = true;
                 this.createTeamError = null;
 
@@ -405,14 +531,73 @@ function adminPanel() {
                     await API.post("/teams/", {
                         name: this.newTeam.name,
                         group: parseInt(this.newTeam.group),
+                        access_password: this.newTeam.access_password.trim(),
                     });
                     showToast("Команда создана", "success");
                     this.showCreateTeamModal = false;
+                    this.showCreateTeamPassword = false;
                     await this.loadTeams();
                 } catch (e) {
                     this.createTeamError = e.message;
                 } finally {
                     this.creatingTeam = false;
+                }
+            },
+
+            generateTeamPassword() {
+                const words = ["luna", "vega", "terra", "atlas", "nova", "orbit", "river", "delta"];
+                const word = words[Math.floor(Math.random() * words.length)];
+                const num = Math.floor(Math.random() * 90) + 10;
+                return `${word}-${num}`;
+            },
+
+            createTeamPassword() {
+                this.newTeam.access_password = this.generateTeamPassword();
+                this.showCreateTeamPassword = true;
+            },
+
+            openTeamPasswordModal(team) {
+                this.teamPasswordModalTeam = team;
+                this.teamPasswordModalValue = "";
+                this.teamPasswordModalError = null;
+                this.showTeamPasswordModal = true;
+            },
+
+            closeTeamPasswordModal() {
+                this.showTeamPasswordModal = false;
+                this.teamPasswordModalTeam = null;
+                this.teamPasswordModalValue = "";
+                this.teamPasswordModalError = null;
+                this.savingTeamPasswordModal = false;
+            },
+
+            generateTeamPasswordForModal() {
+                this.teamPasswordModalValue = this.generateTeamPassword();
+            },
+
+            canSaveTeamPassword() {
+                return Boolean(this.teamPasswordModalValue && this.teamPasswordModalValue.trim().length >= 6)
+                    && !this.savingTeamPasswordModal;
+            },
+
+            async saveTeamPassword() {
+                if (!this.teamPasswordModalTeam || this.teamPasswordModalValue.trim().length < 6) {
+                    this.teamPasswordModalError = "Пароль команды должен быть не короче 6 символов";
+                    return;
+                }
+                this.savingTeamPasswordModal = true;
+                this.teamPasswordModalError = null;
+                try {
+                    await API.patch(`/teams/${this.teamPasswordModalTeam.id}/`, {
+                        access_password: this.teamPasswordModalValue.trim(),
+                    });
+                    showToast("Пароль команды сохранён", "success");
+                    this.closeTeamPasswordModal();
+                    await this.loadTeams();
+                } catch (e) {
+                    this.teamPasswordModalError = e.message;
+                } finally {
+                    this.savingTeamPasswordModal = false;
                 }
             },
 
@@ -425,6 +610,17 @@ function adminPanel() {
                     finished: "Завершена",
                 };
                 return statuses[status] || status;
+            },
+
+            getMinisterLabel(minister) {
+                const labels = {
+                    population: "Население",
+                    energy: "Энергетика",
+                    industry: "Промышленность",
+                    agriculture: "Сельское хозяйство",
+                    trade_finance: "Торговля и финансы",
+                };
+                return labels[minister] || minister || "—";
             },
 
             formatDate(dateStr) {

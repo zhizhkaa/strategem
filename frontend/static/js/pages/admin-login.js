@@ -5,18 +5,6 @@ function adminLogin() {
             loading: false,
             error: null,
 
-            async init() {
-                // Check if already logged in
-                try {
-                    const response = await API.get('/admin/check/');
-                    if (response.is_admin) {
-                        window.location.href = '/admin-panel/';
-                    }
-                } catch (e) {
-                    // Not logged in, stay on login page
-                }
-            },
-
             async login() {
                 if (!this.password) return;
 

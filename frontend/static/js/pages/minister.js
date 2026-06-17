@@ -30,8 +30,6 @@ function ministerApp(ministerKey) {
         // Серверное состояние валидации — синхронизируется между экранами
         validationState: { errors: [], incomplete: [], by_minister: {}, last_validated: null },
 
-        interpolationTables: null,
-
         chartModal: { open: false, param: '', title: '', loading: false },
         _chartInstance: null,
 
@@ -58,9 +56,9 @@ function ministerApp(ministerKey) {
             }
             return cols;
         },
-        // Total columns: Название + Старт + Периоды
+        // Total columns: Название + Периоды
         get colCount() {
-            return 2 + this.allPeriodCols.length;
+            return 1 + this.allPeriodCols.length;
         },
         get ministerStages() {
             if (!this.gameState) return [];
@@ -100,7 +98,7 @@ function ministerApp(ministerKey) {
             try {
                 await this.loadStructure();
                 await this.loadGameState();
-                await Promise.all([this.loadPeriods(), this.loadInterpolation()]);
+                await this.loadPeriods();
             } catch (e) {
                 this.error = 'Ошибка загрузки: ' + e.message;
             } finally {
@@ -145,18 +143,6 @@ function ministerApp(ministerKey) {
             }
         },
 
-        async loadInterpolation() {
-            try {
-                const allTables = await API.get(`/games/interpolation-tables/`);
-                const keys = this.ministerConfig.interpolation_keys || [];
-                const filtered = {};
-                for (const k of keys) {
-                    if (allTables[k]) filtered[k] = allTables[k];
-                }
-                this.interpolationTables = filtered;
-            } catch (_) {}
-        },
-
         initInputValues() {
             if (!this.gameState?.parameters) return;
             const inputParams = new Set(this.ministerConfig.decisions.flatMap(d => d.inputs));
@@ -164,10 +150,10 @@ function ministerApp(ministerKey) {
             const newTouched = {};
             for (const [name, param] of Object.entries(this.gameState.parameters)) {
                 const bounds = param.bounds;
-                const isFixed = bounds != null && bounds.min != null && bounds.max != null && bounds.min === bounds.max;
+                const isFixed = param.is_fixed === true;
                 if (isFixed) {
                     // Fixed params always show their computed value
-                    newValues[name] = bounds.min;
+                    newValues[name] = bounds?.min ?? param.value ?? null;
                 } else if (!inputParams.has(name)) {
                     // Non-input (calculated) params: show current value for read-only display
                     newValues[name] = param.value ?? null;
@@ -215,9 +201,8 @@ function ministerApp(ministerKey) {
                     const config = this.gameState?.parameters?.[autoParam];
                     if (!config) continue;
                     const bounds = config.bounds;
-                    if (bounds && bounds.min !== null && bounds.max !== null
-                        && bounds.min === bounds.max) {
-                        this.inputValues[autoParam] = bounds.min;
+                    if (config.is_fixed === true) {
+                        this.inputValues[autoParam] = bounds?.min ?? config.value ?? null;
                     }
                 }
             }
@@ -258,7 +243,7 @@ function ministerApp(ministerKey) {
                         this.paramErrors[param] = msg;
                     }
                     const formatted = formatErrorPayload(
-                        { errors: responseErrors },
+                        { message: response.message, errors: responseErrors },
                         `Ошибки в ${Object.keys(responseErrors).length} параметрах`,
                     );
                     showToast({
@@ -281,6 +266,28 @@ function ministerApp(ministerKey) {
                 showToast('Значения министра сохранены', 'success');
                 this.submitResult = { success: true };
             } catch (e) {
+                const responseErrors = e.apiErrorPayload?.errors || {};
+                if (Object.keys(responseErrors).length > 0) {
+                    this.paramErrors = {};
+                    for (const [param, msg] of Object.entries(responseErrors)) {
+                        this.paramErrors[param] = msg;
+                    }
+                    const formatted = formatErrorPayload(
+                        { message: e.apiErrorPayload?.message, errors: responseErrors },
+                        `Ошибки в ${Object.keys(responseErrors).length} параметрах`,
+                    );
+                    showToast({
+                        message: formatted.message,
+                        type: 'error',
+                        details: formatted.details,
+                        detailsTitle: 'Ошибки в решениях',
+                    });
+                    console.debug('Batch validation errors:', responseErrors);
+                    const firstError = Object.keys(responseErrors)[0];
+                    const el = document.querySelector(`[data-param="${firstError}"]`);
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    return;
+                }
                 showToast(e || 'Ошибка при отправке', 'error');
             } finally {
                 this.submitting = false;
@@ -366,8 +373,7 @@ function ministerApp(ministerKey) {
             return p?.[param] ?? null;
         },
         isFixed(param) {
-            const bounds = this.gameState?.parameters?.[param]?.bounds;
-            return bounds != null && bounds.min != null && bounds.max != null && bounds.min === bounds.max;
+            return this.gameState?.parameters?.[param]?.is_fixed === true;
         },
         isStageAvailable(stageKey) {
             const stage = this.ministerStages.find(s => s.key === stageKey);
@@ -394,29 +400,5 @@ function ministerApp(ministerKey) {
             return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(num);
         },
 
-        renderOneChart(canvas, data) {
-            new Chart(canvas, {
-                type: 'line',
-                data: {
-                    datasets: [{
-                        data: data.x.map((x, i) => ({ x, y: data.y[i] })),
-                        borderColor: '#0ea5e9',
-                        backgroundColor: '#0ea5e920',
-                        tension: 0.3,
-                        fill: true,
-                        pointRadius: 3,
-                    }],
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: { type: 'linear', title: { display: true, text: 'x' } },
-                        y: { title: { display: true, text: 'y' } },
-                    },
-                },
-            });
-        },
     };
 }

@@ -58,13 +58,6 @@
                         >
                             Администратор
                         </a>
-                        <a
-                            href="/api/docs/"
-                            class="hover:bg-strategem-600 px-3 py-2 rounded-md text-sm font-medium transition-colors"
-                            target="_blank"
-                        >
-                            API Docs
-                        </a>
                         {% endblock %}
                     </div>
                 </div>
@@ -100,7 +93,7 @@
                         class="text-white px-4 py-3 rounded-lg shadow-lg flex items-start gap-2 min-w-[300px] max-w-md"
                     >
                         <div class="min-w-0 flex-1">
-                            <span class="block break-words" x-text="toast.message"></span>
+                            <span class="block break-words whitespace-pre-line" x-text="toast.message"></span>
                             <button
                                 x-show="toast.details.length > 0"
                                 @click="openDetails(toast)"

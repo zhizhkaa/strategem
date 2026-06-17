@@ -1,6 +1,7 @@
 """Faculty, group, and team models used to assign games to participants."""
 
 from django.core.validators import MinValueValidator
+from django.contrib.auth.hashers import check_password, identify_hasher, make_password
 from django.db import models
 from django.utils import timezone
 
@@ -86,6 +87,13 @@ class Team(models.Model):
     group = models.ForeignKey(
         Group, on_delete=models.CASCADE, related_name="teams", verbose_name="Группа"
     )
+    access_password = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+        verbose_name="Пароль команды",
+        help_text="Хеш пароля, который команда вводит для входа в игру",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлено")
 
@@ -97,3 +105,27 @@ class Team(models.Model):
 
     def __str__(self) -> str:
         return str(self.name)
+
+    def access_password_is_hashed(self) -> bool:
+        if not self.access_password:
+            return False
+        try:
+            identify_hasher(self.access_password)
+        except ValueError:
+            return False
+        return True
+
+    def set_access_password(self, raw_password: str) -> None:
+        self.access_password = make_password(raw_password)
+
+    def check_access_password(self, raw_password: str) -> bool:
+        if not self.access_password:
+            return False
+        if not self.access_password_is_hashed():
+            return self.access_password == raw_password
+        return check_password(raw_password, self.access_password)
+
+    def save(self, *args, **kwargs):
+        if self.access_password and not self.access_password_is_hashed():
+            self.set_access_password(self.access_password)
+        super().save(*args, **kwargs)

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
-{% block title %}Стратегема - Документация{% endblock %}
+{% block title %}Стратегема - Справка{% endblock %}
 {% block nav_items %}
 <span
     class="text-strategem-200 text-sm"
@@ -13,8 +13,6 @@
 {% endblock %}
 {% block content %}
 <div x-data="docsApp()" x-init="init()" x-cloak>
-
-    <!-- Loading -->
     <div x-show="loading" class="flex items-center justify-center min-h-[300px]">
         <div class="loader mx-auto" style="width: 48px; height: 48px"></div>
     </div>
@@ -23,21 +21,8 @@
         <div class="flex items-center justify-between mb-4">
             <div>
                 <h1 class="text-xl font-bold text-gray-900">Справка</h1>
-                <p class="text-sm text-gray-500">Материалы и документация по игре</p>
-            </div>
-            <div class="flex gap-2">
-                <button
-                    @click="activeScope = 'general'"
-                    :class="activeScope === 'general' ? 'bg-strategem-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'"
-                    class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors"
-                >Общие</button>
-                <button
-                    @click="activeScope = ministerKey"
-                    :class="activeScope === ministerKey ? 'bg-strategem-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'"
-                    x-show="ministerKey"
-                    class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors"
-                    x-text="'Для ' + ministerLabel"
-                ></button>
+                <p class="text-sm text-gray-500" x-show="!ministerKey">Документы и графики по игре</p>
+                <p class="text-sm text-gray-500" x-show="ministerKey" x-text="'Документы для министра: ' + ministerLabel"></p>
             </div>
         </div>
 
@@ -48,46 +33,196 @@
             <p class="text-red-700 text-sm" x-text="error"></p>
         </div>
 
-        <!-- Empty state -->
-        <div
-            x-show="!error && filteredDocs.length === 0"
-            class="bg-white rounded-lg shadow-md p-12 text-center"
-        >
-            <svg class="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-            </svg>
+        <div x-show="!error && visibleDocs.length === 0" class="bg-white rounded-lg shadow-md p-12 text-center">
             <p class="text-gray-500">Файлы не загружены</p>
         </div>
 
-        <!-- Documents list -->
-        <div x-show="!error && filteredDocs.length > 0" class="grid gap-3">
-            <template x-for="doc in filteredDocs" :key="doc.id">
-                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex items-center justify-between gap-4">
-                    <div class="flex items-center gap-3 min-w-0">
-                        <div class="w-10 h-10 bg-strategem-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <svg class="w-5 h-5 text-strategem-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                            </svg>
+        <div x-show="!error && visibleDocs.length > 0" class="grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)] gap-4">
+            <div class="space-y-4">
+                <div x-show="!ministerKey" class="space-y-4">
+                    <div class="bg-white rounded-lg shadow-md overflow-hidden border border-gray-200">
+                        <div class="px-4 py-3 border-b border-gray-200 bg-gray-100">
+                            <h2 class="font-semibold text-gray-900 text-sm">Словарь терминов и основные ошибки</h2>
                         </div>
-                        <div class="min-w-0">
-                            <p class="font-medium text-gray-900 text-sm" x-text="doc.title"></p>
-                            <p class="text-xs text-gray-500 mt-0.5" x-text="doc.filename"></p>
+                        <div class="divide-y divide-gray-100">
+                            <template x-for="doc in generalDocs" :key="doc.slot || doc.id">
+                                <button
+                                    type="button"
+                                    @click="selectDoc(doc)"
+                                    :class="isActiveDoc(doc) ? 'bg-strategem-50 border-l-strategem-600' : 'bg-white border-l-transparent hover:bg-gray-50'"
+                                    class="w-full text-left px-4 py-3 border-l-4 transition-colors flex items-center gap-3"
+                                >
+                                    <span class="w-8 h-8 rounded-md bg-gray-100 text-gray-500 flex items-center justify-center flex-shrink-0">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 3h7l5 5v13H7z"/>
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 3v5h5M9 13h6M9 17h6"/>
+                                        </svg>
+                                    </span>
+                                    <span class="font-medium text-gray-900 text-sm truncate" x-text="doc.title"></span>
+                                </button>
+                            </template>
                         </div>
                     </div>
-                    <div class="flex items-center gap-2 flex-shrink-0">
+
+                    <div class="bg-white rounded-lg shadow-md overflow-hidden border border-gray-200">
+                        <div class="px-4 py-3 border-b border-gray-200 bg-gray-100">
+                            <h2 class="font-semibold text-gray-900 text-sm">Описание ролей министров</h2>
+                        </div>
+                        <div class="divide-y divide-gray-100">
+                            <template x-for="doc in ministerDocs" :key="doc.slot || doc.id">
+                                <button
+                                    type="button"
+                                    @click="selectDoc(doc)"
+                                    :class="isActiveDoc(doc) ? 'bg-strategem-50 border-l-strategem-600' : 'bg-white border-l-transparent hover:bg-gray-50'"
+                                    class="w-full text-left px-4 py-3 border-l-4 transition-colors flex items-center gap-3"
+                                >
+                                    <span class="w-8 h-8 rounded-md bg-gray-100 text-gray-500 flex items-center justify-center flex-shrink-0">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 3h7l5 5v13H7z"/>
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 3v5h5M9 13h6M9 17h6"/>
+                                        </svg>
+                                    </span>
+                                    <span class="font-medium text-gray-900 text-sm truncate" x-text="doc.title"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <div x-show="ministerKey" class="space-y-4">
+                    <div class="bg-white rounded-lg shadow-md overflow-hidden border border-gray-200">
+                        <div class="px-4 py-3 border-b border-gray-200 bg-gray-100">
+                            <h2 class="font-semibold text-gray-900 text-sm">Описание роли</h2>
+                        </div>
+                        <div class="divide-y divide-gray-100">
+                            <template x-for="doc in ministerDocs" :key="doc.slot || doc.id">
+                                <button
+                                    type="button"
+                                    @click="selectDoc(doc)"
+                                    :class="isActiveDoc(doc) ? 'bg-strategem-50 border-l-strategem-600' : 'bg-white border-l-transparent hover:bg-gray-50'"
+                                    class="w-full text-left px-4 py-3 border-l-4 transition-colors flex items-center gap-3"
+                                >
+                                    <span class="w-8 h-8 rounded-md bg-gray-100 text-gray-500 flex items-center justify-center flex-shrink-0">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 3h7l5 5v13H7z"/>
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 3v5h5M9 13h6M9 17h6"/>
+                                        </svg>
+                                    </span>
+                                    <span class="font-medium text-gray-900 text-sm truncate" x-text="doc.title"></span>
+                                </button>
+                            </template>
+                            <div x-show="ministerDocs.length === 0" class="px-4 py-4 text-sm text-gray-500">
+                                Описание роли не загружено
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-lg shadow-md overflow-hidden border border-gray-200">
+                        <div class="px-4 py-3 border-b border-gray-200 bg-gray-100">
+                            <h2 class="font-semibold text-gray-900 text-sm">Словарь терминов и основные ошибки</h2>
+                        </div>
+                        <div class="divide-y divide-gray-100">
+                            <template x-for="doc in generalDocs" :key="doc.slot || doc.id">
+                                <button
+                                    type="button"
+                                    @click="selectDoc(doc)"
+                                    :class="isActiveDoc(doc) ? 'bg-strategem-50 border-l-strategem-600' : 'bg-white border-l-transparent hover:bg-gray-50'"
+                                    class="w-full text-left px-4 py-3 border-l-4 transition-colors flex items-center gap-3"
+                                >
+                                    <span class="w-8 h-8 rounded-md bg-gray-100 text-gray-500 flex items-center justify-center flex-shrink-0">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 3h7l5 5v13H7z"/>
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 3v5h5M9 13h6M9 17h6"/>
+                                        </svg>
+                                    </span>
+                                    <span class="font-medium text-gray-900 text-sm truncate" x-text="doc.title"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                <div class="px-4 py-3 border-b border-gray-200 flex flex-wrap items-center justify-between gap-3">
+                    <div class="min-w-0">
+                        <h2 class="font-semibold text-gray-900 text-sm truncate" x-text="activeDoc?.title || 'Предпросмотр'"></h2>
+                        <p x-show="activeDoc && pdfPageCount" class="text-xs text-gray-500 mt-0.5" x-text="'Страниц: ' + pdfPageCount"></p>
+                    </div>
+                    <div x-show="activeDoc" class="flex items-center gap-2">
+                        <button
+                            type="button"
+                            @click="changePdfZoom(-0.1)"
+                            :disabled="pdfLoading"
+                            class="w-8 h-8 flex items-center justify-center rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                            aria-label="Уменьшить"
+                            title="Уменьшить"
+                        >−</button>
+                        <button
+                            type="button"
+                            @click="resetPdfZoom()"
+                            :disabled="pdfLoading"
+                            class="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50"
+                            title="По ширине"
+                        >
+                            <span x-text="Math.round(pdfZoom * 100) + '%'"></span>
+                        </button>
+                        <button
+                            type="button"
+                            @click="changePdfZoom(0.1)"
+                            :disabled="pdfLoading"
+                            class="w-8 h-8 flex items-center justify-center rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                            aria-label="Увеличить"
+                            title="Увеличить"
+                        >+</button>
                         <a
-                            :href="doc.url"
-                            target="_blank"
-                            class="px-3 py-1.5 text-sm bg-strategem-50 text-strategem-700 rounded-md hover:bg-strategem-100 transition-colors font-medium"
-                        >Просмотреть</a>
-                        <a
-                            :href="doc.url"
-                            :download="doc.filename"
+                            :href="activeDoc?.download_url || activeDoc?.url"
+                            :download="activeDoc?.filename"
                             class="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors font-medium"
                         >Скачать</a>
                     </div>
                 </div>
-            </template>
+                <div class="bg-gray-100 overflow-y-auto" style="height: max(720px, calc(100vh - 220px));">
+                    <div
+                        x-show="pdfLoading"
+                        class="h-full flex items-center justify-center"
+                    >
+                        <div class="loader" style="width: 40px; height: 40px"></div>
+                    </div>
+                    <div
+                        x-show="pdfError"
+                        class="px-6 py-12 text-center text-sm text-red-700"
+                        x-text="pdfError"
+                    ></div>
+                    <div
+                        x-show="activeDoc && !pdfError"
+                        x-ref="pdfViewer"
+                        class="px-4 py-4 space-y-4"
+                    ></div>
+                    <p x-show="!activeDoc" class="text-sm text-gray-500 px-6 py-12 text-center">
+                        Выберите документ в списке
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div x-show="!error && chartEntries.length > 0" class="mt-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-3">Графики интерполяции</h2>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <template x-for="[tableName, tableData] in chartEntries" :key="tableName">
+                    <div class="bg-white rounded-lg shadow-md p-4">
+                        <div class="mb-3">
+                            <h3 class="font-semibold text-gray-900">
+                                Таблица <span class="font-mono text-strategem-700" x-text="tableName"></span>
+                            </h3>
+                            <p class="text-sm text-gray-500 mt-0.5" x-text="tableData.description"></p>
+                        </div>
+                        <div class="h-48">
+                            <canvas x-init="renderInterpolationChart($el, tableData)"></canvas>
+                        </div>
+                    </div>
+                </template>
+            </div>
         </div>
     </div>
 </div>

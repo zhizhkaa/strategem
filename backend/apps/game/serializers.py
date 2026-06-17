@@ -8,11 +8,24 @@
 - Parameter: параметров игры
 """
 
+import secrets
+
 from apps.management.models import Faculty, Group, Team
 from rest_framework import serializers
 
 from .engine import get_calculator
 from .models import ALLOWED_TOTAL_PERIODS, Game, GameDifficulty, GamePeriod, GameStatus
+
+MIN_TEAM_PASSWORD_LENGTH = 6
+
+
+def validate_team_access_password(value: str) -> str:
+    password = value.strip()
+    if password and len(password) < MIN_TEAM_PASSWORD_LENGTH:
+        raise serializers.ValidationError(
+            f"Пароль команды должен быть не короче {MIN_TEAM_PASSWORD_LENGTH} символов."
+        )
+    return password
 
 # ========================================
 # MANAGEMENT SERIALIZERS
@@ -81,6 +94,10 @@ class TeamSerializer(serializers.ModelSerializer):
     group_name = serializers.CharField(source="group.name", read_only=True)
     faculty_name = serializers.CharField(source="group.faculty.name", read_only=True)
     has_active_game = serializers.SerializerMethodField()
+    access_password = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    has_access_password = serializers.SerializerMethodField()
+    has_finished_game = serializers.SerializerMethodField()
+    game_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Team
@@ -91,19 +108,47 @@ class TeamSerializer(serializers.ModelSerializer):
             "group_name",
             "faculty_name",
             "has_active_game",
+            "access_password",
+            "has_access_password",
+            "has_finished_game",
+            "game_status",
         ]
 
     def get_has_active_game(self, obj: Team) -> bool:
         """Проверяет, есть ли активная игра у команды."""
-        return hasattr(obj, "game") and obj.game is not None
+        return (
+            hasattr(obj, "game")
+            and obj.game is not None
+            and obj.game.status != GameStatus.FINISHED
+        )
+
+    def get_has_access_password(self, obj: Team) -> bool:
+        return bool(obj.access_password)
+
+    def get_has_finished_game(self, obj: Team) -> bool:
+        return (
+            hasattr(obj, "game")
+            and obj.game is not None
+            and obj.game.status == GameStatus.FINISHED
+        )
+
+    def get_game_status(self, obj: Team) -> str | None:
+        if not hasattr(obj, "game") or obj.game is None:
+            return None
+        return obj.game.status
+
+    def validate_access_password(self, value: str) -> str:
+        return validate_team_access_password(value)
 
 
 class TeamCreateSerializer(serializers.ModelSerializer):
     """Сериализатор для создания команды."""
 
+    access_password = serializers.CharField(required=False, allow_blank=True, write_only=True)
+
     class Meta:
         model = Team
-        fields = ["id", "name", "group"]
+        fields = ["id", "name", "group", "access_password"]
         read_only_fields = ["id"]
 
     def validate(self, data: dict) -> dict:
@@ -116,6 +161,20 @@ class TeamCreateSerializer(serializers.ModelSerializer):
                 "Команда с таким названием уже существует в этой группе."
             )
         return data
+
+    def validate_access_password(self, value: str) -> str:
+        return validate_team_access_password(value)
+
+    def create(self, validated_data: dict) -> Team:
+        if not validated_data.get("access_password"):
+            validated_data["access_password"] = generate_team_password()
+        return super().create(validated_data)
+
+
+def generate_team_password() -> str:
+    """Возвращает простой пароль для команды."""
+    words = ["luna", "vega", "terra", "atlas", "nova", "orbit", "river", "delta"]
+    return f"{secrets.choice(words)}-{secrets.randbelow(90) + 10}"
 
 
 # ========================================
@@ -278,7 +337,7 @@ class GamePeriodListSerializer(serializers.ModelSerializer):
             "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8",
             "P9", "P10", "P11", "P12", "P13",
             # Энергетика
-            "E7", "E10", "E16",
+            "E7", "E10", "E15", "E16", "E17",
             "E20", "E21", "E22", "E23", "E24", "E25", "E26", "E27",
             # Промышленность
             "G3", "G6", "G15", "G18", "G19",
@@ -394,6 +453,7 @@ class GameStateSerializer(serializers.Serializer):
     available_stages = DecisionStageSerializer(many=True)
     next_actions = NextActionSerializer(many=True)
     ministers = serializers.DictField(child=MinisterInfoSerializer())
+    validation_state = serializers.DictField()
 
 
 # ========================================

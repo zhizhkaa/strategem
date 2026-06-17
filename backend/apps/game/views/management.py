@@ -72,6 +72,22 @@ class FacultyViewSet(viewsets.ModelViewSet):
             )
         return super().destroy(request, pk)
 
+    def update(self, request: Request, pk=None, *args, **kwargs) -> Response:
+        if not request.session.get("is_admin", False):
+            return Response(
+                {"error": "Требуются права администратора"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().update(request, pk, *args, **kwargs)
+
+    def partial_update(self, request: Request, pk=None, *args, **kwargs) -> Response:
+        if not request.session.get("is_admin", False):
+            return Response(
+                {"error": "Требуются права администратора"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().partial_update(request, pk, *args, **kwargs)
+
 
 class GroupViewSet(viewsets.ModelViewSet):
     """ViewSet для управления группами."""
@@ -203,3 +219,19 @@ class TeamViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
         return super().destroy(request, pk)
+
+    def update(self, request: Request, pk=None, *args, **kwargs) -> Response:
+        if not request.session.get("is_admin", False):
+            return Response(
+                {"error": "Требуются права администратора"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().update(request, pk, *args, **kwargs)
+
+    def partial_update(self, request: Request, pk=None, *args, **kwargs) -> Response:
+        if not request.session.get("is_admin", False):
+            return Response(
+                {"error": "Требуются права администратора"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().partial_update(request, pk, *args, **kwargs)

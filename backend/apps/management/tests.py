@@ -90,6 +90,11 @@ class APITest(APITestCase):
     group_year = 2024
     team_name = "Команда A"
 
+    def setUp(self):
+        session = self.client.session
+        session["is_admin"] = True
+        session.save()
+
     def test_faculty_api(self):
         response = self.client.post("/api/faculties/", {"name": self.faculty_name})
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)

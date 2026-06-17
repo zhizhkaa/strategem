@@ -21,6 +21,7 @@ function gameApp() {
 
         // Заполняется из API /games/decision-structure/
         SUMMARY_GROUPS: [],
+        SUMMARY_INFO: [],
         PARAM_VERBOSE: {},
         START_VALUES: {},
         MINISTER_SHORTS: {},
@@ -63,6 +64,7 @@ function gameApp() {
         async loadStructure() {
             const data = await API.get('/games/decision-structure/');
             this.SUMMARY_GROUPS = data.summary_groups;
+            this.SUMMARY_INFO = data.summary_info || [];
             this.PARAM_VERBOSE = Object.fromEntries(
                 Object.entries(data.parameters).map(([k, v]) => [k, v.verbose_name])
             );
@@ -100,7 +102,7 @@ function gameApp() {
                 const p = this.gameState.parameters[param];
                 if (!p) continue;
                 const b = p.bounds;
-                if (b?.min != null && b?.max != null && b.min === b.max) { vals[param] = b.min; this.touchedParams[param] = true; }
+                if (p.is_fixed === true) { vals[param] = b?.min ?? p.value ?? null; }
                 else if (p.status === 'filled') { vals[param] = p.value ?? ''; this.touchedParams[param] = true; }
                 else { vals[param] = p.value ?? ''; }
             }
@@ -132,7 +134,20 @@ function gameApp() {
 
         getVal(param)              { return this.gameState?.parameters?.[param]?.value; },
         getPastVal(param, period)  { const p = this.pastPeriods.find(x => x.period_number === period); return p?.[param] ?? null; },
-        isSummaryInputEnabled(param) { return this.allInputParams.has(param); },
+        visibleSummaryInfo() {
+            return this.SUMMARY_INFO.filter(param => Number(this.getVal(param) || 0) !== 0);
+        },
+        getParamStatus(param)      { return this.gameState?.parameters?.[param]?.status || 'locked'; },
+        isSummaryFixed(param) {
+            return this.gameState?.parameters?.[param]?.is_fixed === true;
+        },
+        isSummaryInputEnabled(param) {
+            if (this.isViewOnly || this.isGamePaused) return false;
+            if (!this.allInputParams.has(param)) return false;
+            if (this.isSummaryFixed(param)) return false;
+            return this.getParamStatus(param) === 'filled'
+                || this.getParamStatus(param) === 'next_to_fill';
+        },
         isError(param)             { return this.validationErrors.indexOf(param) !== -1; },
         isIncomplete(param)        { return !!this.incompleteParamSet[param]; },
         getMinisterShort(key)      { return this.MINISTER_SHORTS[key] || key; },
@@ -151,9 +166,8 @@ function gameApp() {
                     const config = this.gameState?.parameters?.[param];
                     if (!config) continue;
                     const bounds = config.bounds;
-                    if (bounds && bounds.min !== null && bounds.max !== null
-                        && bounds.min === bounds.max) {
-                        this.inputValues[param] = bounds.min;
+                    if (config.is_fixed === true) {
+                        this.inputValues[param] = bounds?.min ?? config.value ?? null;
                     }
                 }
             }
@@ -168,7 +182,7 @@ function gameApp() {
                 const parameters = {};
                 for (const param of this.allInputParams) {
                     const value = this.inputValues[param];
-                    if (this.touchedParams[param] && value !== null && value !== undefined && value !== '') {
+                    if (this.isSummaryInputEnabled(param) && this.touchedParams[param] && value !== null && value !== undefined && value !== '') {
                         parameters[param] = Number(value);
                     }
                 }
@@ -183,7 +197,7 @@ function gameApp() {
                     this.validationErrors = Object.keys(batchResponse.errors || {});
                     this.validationErrorSet = batchResponse.errors || {};
                     const formatted = formatErrorPayload(
-                        { errors: batchResponse.errors || {} },
+                        { message: batchResponse.message, errors: batchResponse.errors || {} },
                         `Ошибки в ${this.validationErrors.length} параметрах`,
                     );
                     showToast({
@@ -238,6 +252,26 @@ function gameApp() {
                     showToast(result.error || 'Ошибка', 'error');
                 }
             } catch (e) {
+                const responseErrors = e.apiErrorPayload?.errors || {};
+                if (Object.keys(responseErrors).length > 0) {
+                    this.validationErrors = Object.keys(responseErrors);
+                    this.validationErrorSet = responseErrors;
+                    const formatted = formatErrorPayload(
+                        { message: e.apiErrorPayload?.message, errors: responseErrors },
+                        `Ошибки в ${this.validationErrors.length} параметрах`,
+                    );
+                    showToast({
+                        message: formatted.message,
+                        type: 'error',
+                        details: formatted.details,
+                        detailsTitle: 'Ошибки в решениях',
+                    });
+                    console.debug('Batch validation errors:', responseErrors);
+                    const firstError = Object.keys(responseErrors)[0];
+                    const el = document.getElementById('input-' + firstError);
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    return;
+                }
                 showToast(e || 'Ошибка', 'error');
             } finally {
                 this.processingAction = false;

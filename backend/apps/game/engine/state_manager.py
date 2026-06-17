@@ -84,6 +84,16 @@ class GameStateManager:
     - Генерацию полного отчёта о состоянии игры
     """
 
+    _PERIOD_BASE_REQUIREMENT_LEVELS = {
+        # На начало каждого периода уже есть рассчитанное состояние страны.
+        # Поэтому межэтапные requires не должны блокировать ввод решений нового
+        # периода ожиданием значений из только что сброшенных decision states.
+        "capital": 4,
+        "energy": 1,
+        "finance": 3,
+        "import": 3,
+    }
+
     def __init__(self, calculator: GameCalculator | None = None):
         """
         Инициализация менеджера состояния.
@@ -108,6 +118,9 @@ class GameStateManager:
 
         # Читаем флаг параллельного режима
         self.parallel_mode: bool = bool(self._decision_order.get("parallel_mode", False))
+        self.auto_calculate_decision_residuals: bool = bool(
+            self._decision_order.get("auto_calculate_decision_residuals", True)
+        )
 
         # Загружаем конфигурацию параметров
         params_path = data_dir / "parameters.yaml"
@@ -148,6 +161,20 @@ class GameStateManager:
             ):
                 continue
             result.append(inp)
+        if (
+            not self.auto_calculate_decision_residuals
+            and self._is_team_stage(stage_config)
+        ):
+            for auto in stage_config.get("auto_calculated", []):
+                if not isinstance(auto, dict) or not auto.get("param"):
+                    continue
+                result.append(
+                    {
+                        "param": auto["param"],
+                        "name": auto.get("name", auto["param"]),
+                        "controller": "team",
+                    }
+                )
         return result
 
     def _get_stage_for_param(self, param_name: str) -> tuple[str | None, dict | None]:
@@ -243,19 +270,23 @@ class GameStateManager:
 
         # Определяем статус каждого параметра
         parameters_state = self._get_parameters_state(
-            params, decision_state, history, user_inputs
+            params, decision_state, history, user_inputs, current_period
         )
 
         # Определяем доступные этапы решений
         available_stages = self._get_available_stages(
-            decision_state, params, user_inputs
+            decision_state, params, user_inputs, current_period
         )
 
         # Определяем следующие действия
-        next_actions = self._get_next_actions(decision_state, user_inputs)
+        next_actions = self._get_next_actions(
+            decision_state, user_inputs, params, current_period
+        )
 
         # Проверяем, можно ли перейти к следующему периоду
-        can_advance = self._can_advance_period(decision_state, user_inputs)
+        can_advance = self._can_advance_period(
+            decision_state, user_inputs, params, current_period
+        )
 
         return {
             "game_info": {
@@ -276,6 +307,7 @@ class GameStateManager:
         decision_state: DecisionState,
         history: list[dict[str, float]],
         user_inputs: list[str] | None = None,
+        current_period: int | None = None,
     ) -> dict[str, dict[str, Any]]:
         """
         Возвращает состояние всех параметров с метаданными.
@@ -300,7 +332,12 @@ class GameStateManager:
         result = {}
 
         # Определяем, какие параметры сейчас можно заполнять
-        fillable_params = self._get_fillable_params(decision_state)
+        fillable_params = self._get_fillable_params(
+            decision_state,
+            params=params,
+            user_inputs=user_inputs,
+            current_period=current_period,
+        )
 
         for param_name, config in self._parameters_config.items():
             if not isinstance(config, dict):
@@ -358,7 +395,13 @@ class GameStateManager:
 
         return result
 
-    def _get_fillable_params(self, decision_state: DecisionState) -> set[str]:
+    def _get_fillable_params(
+        self,
+        decision_state: DecisionState,
+        params: dict[str, float] | None = None,
+        user_inputs: list[str] | set[str] | tuple[str, ...] | None = None,
+        current_period: int | None = None,
+    ) -> set[str]:
         """
         Определяет, какие параметры можно заполнять в текущем состоянии.
 
@@ -366,48 +409,27 @@ class GameStateManager:
             Множество имён параметров, доступных для ввода
         """
         fillable = set()
+        user_inputs_set = set(user_inputs or [])
 
         for _stage_key, stage_config in self._iter_decision_stages():
             if not self._is_team_stage(stage_config):
                 continue
 
             # Проверяем требования этапа
-            requirements = stage_config.get("requires", [])
-            requirements_met = True
-
-            for req in requirements:
-                if isinstance(req, dict):
-                    category = req.get("category")
-                    level = req.get("level", 0)
-                    if not isinstance(category, str):
-                        requirements_met = False
-                        break
-                    if not decision_state.check(category, level):
-                        requirements_met = False
-                        break
-
+            requirements_met, _ = self._check_stage_requirements(
+                stage_config, decision_state, current_period
+            )
             if not requirements_met:
                 continue
 
             # Проверяем, не завершён ли уже этот этап
-            sets_decision = stage_config.get("sets_decision")
-            if sets_decision:
-                if isinstance(sets_decision, dict):
-                    if decision_state.check(
-                        sets_decision.get("category", ""),
-                        sets_decision.get("level", 0),
-                    ):
-                        continue
-                elif isinstance(sets_decision, list):
-                    all_set = True
-                    for sd in sets_decision:
-                        if not decision_state.check(
-                            sd.get("category", ""), sd.get("level", 0)
-                        ):
-                            all_set = False
-                            break
-                    if all_set:
-                        continue
+            if self._is_stage_completed(
+                stage_config,
+                decision_state,
+                params=params,
+                user_inputs=user_inputs_set,
+            ):
+                continue
 
             # Добавляем вводимые параметры этого этапа
             inputs = self._get_stage_inputs(stage_config)
@@ -416,11 +438,105 @@ class GameStateManager:
 
         return fillable
 
+    def _requirement_is_met(
+        self,
+        decision_state: DecisionState,
+        category: str,
+        level: int,
+        current_period: int | None = None,
+    ) -> bool:
+        """Проверяет требование этапа с учётом базового состояния периода."""
+        if decision_state.check(category, level):
+            return True
+        if current_period is not None and current_period >= 1:
+            return self._PERIOD_BASE_REQUIREMENT_LEVELS.get(category, 0) >= level
+        return False
+
+    def _check_stage_requirements(
+        self,
+        stage_config: dict[str, Any],
+        decision_state: DecisionState,
+        current_period: int | None = None,
+    ) -> tuple[bool, list[str]]:
+        """Возвращает, выполнены ли требования этапа, и список недостающих."""
+        if self.parallel_mode:
+            return True, []
+
+        requirements = stage_config.get("requires", [])
+        requirements_met = True
+        missing_requirements = []
+
+        for req in requirements:
+            if not isinstance(req, dict):
+                continue
+            category = req.get("category")
+            level = req.get("level", 0)
+            if not isinstance(category, str):
+                requirements_met = False
+                missing_requirements.append(f"{category} >= {level}")
+                continue
+            if not self._requirement_is_met(
+                decision_state, category, level, current_period
+            ):
+                requirements_met = False
+                missing_requirements.append(f"{category} >= {level}")
+
+        return requirements_met, missing_requirements
+
+    def _is_stage_completed(
+        self,
+        stage_config: dict[str, Any],
+        decision_state: DecisionState,
+        params: dict[str, float] | None = None,
+        user_inputs: set[str] | list[str] | tuple[str, ...] | None = None,
+    ) -> bool:
+        """Проверяет завершённость этапа по его собственным полям."""
+        user_inputs_set = set(user_inputs or [])
+        inputs = self._get_stage_inputs(stage_config)
+
+        if inputs and params is not None:
+            for inp in inputs:
+                param_name = inp.get("param")
+                if not param_name:
+                    continue
+                config = self._parameters_config.get(param_name, {})
+                default = config.get("default", 0) if isinstance(config, dict) else 0
+                current_value = params.get(param_name, default)
+                is_fixed = self._calculator.is_fixed_parameter(param_name)
+
+                if is_fixed:
+                    min_val, _ = self._calculator.get_parameter_bounds(
+                        params, param_name, []
+                    )
+                    if (
+                        param_name not in user_inputs_set
+                        and min_val is not None
+                        and current_value != min_val
+                    ):
+                        return False
+                elif param_name not in user_inputs_set:
+                    return False
+            return True
+
+        sets_decision = stage_config.get("sets_decision")
+        if isinstance(sets_decision, dict):
+            return decision_state.check(
+                sets_decision.get("category", ""),
+                sets_decision.get("level", 0),
+            )
+        if isinstance(sets_decision, list) and len(sets_decision) > 0:
+            return all(
+                decision_state.check(sd.get("category", ""), sd.get("level", 0))
+                for sd in sets_decision
+            )
+        return False
+
     def _get_available_stages(
         self,
         decision_state: DecisionState,
         params: dict[str, float] | None = None,
         user_inputs: list[str] | None = None,
+        current_period: int | None = None,
     ) -> list[dict]:
         """
         Возвращает список доступных этапов решений.
@@ -434,8 +550,8 @@ class GameStateManager:
             Список этапов с информацией о требованиях и статусе
         """
         if params is None:
-            current_params = getattr(self, "_current_params", {})
-            params = current_params if isinstance(current_params, dict) else {}
+            current_params = getattr(self, "_current_params", None)
+            params = current_params if isinstance(current_params, dict) else None
         if user_inputs is None:
             user_inputs = []
         stages = []
@@ -445,83 +561,17 @@ class GameStateManager:
                 continue
 
             # Проверяем требования этапа
-            requirements = stage_config.get("requires", [])
-            requirements_met = True
-            missing_requirements = []
-
-            for req in requirements:
-                if isinstance(req, dict):
-                    category = req.get("category")
-                    level = req.get("level", 0)
-                    if not isinstance(category, str):
-                        requirements_met = False
-                        missing_requirements.append(f"{category} >= {level}")
-                        continue
-                    if not decision_state.check(category, level):
-                        requirements_met = False
-                        missing_requirements.append(f"{category} >= {level}")
+            requirements_met, missing_requirements = self._check_stage_requirements(
+                stage_config, decision_state, current_period
+            )
 
             # Проверяем, завершён ли этап
-            completed = False
-            sets_decision = stage_config.get("sets_decision")
-            if sets_decision:
-                if isinstance(sets_decision, dict):
-                    completed = decision_state.check(
-                        sets_decision.get("category", ""),
-                        sets_decision.get("level", 0),
-                    )
-                elif isinstance(sets_decision, list) and len(sets_decision) > 0:
-                    completed = all(
-                        decision_state.check(sd.get("category", ""), sd.get("level", 0))
-                        for sd in sets_decision
-                    )
-
-            # Для этапов без sets_decision (пустой список или отсутствует)
-            # проверяем, все ли input параметры заполнены
-            if not sets_decision or (
-                isinstance(sets_decision, list) and len(sets_decision) == 0
-            ):
-                inputs = self._get_stage_inputs(stage_config)
-                if inputs and requirements_met:
-                    all_inputs_filled = True
-                    for inp in inputs:
-                        param_name = inp.get("param")
-                        if param_name:
-                            config = self._parameters_config.get(param_name, {})
-                            default = (
-                                config.get("default", 0)
-                                if isinstance(config, dict)
-                                else 0
-                            )
-                            current_value = params.get(param_name, default)
-
-                            # Проверяем, является ли параметр фиксированным
-                            is_fixed = self._calculator.is_fixed_parameter(
-                                param_name
-                            )
-
-                            if is_fixed:
-                                # Для fixed-полей auto-fill считается заполненным
-                                # по формуле, а forced snapshot - по факту
-                                # явного ввода.
-                                min_val, _ = self._calculator.get_parameter_bounds(
-                                    params, param_name, []
-                                )
-                                if (
-                                    param_name not in user_inputs
-                                    and min_val is not None
-                                    and current_value != min_val
-                                ):
-                                    all_inputs_filled = False
-                                    break
-                            else:
-                                # Для обычных - проверяем, был ли параметр явно введён пользователем
-                                # Это позволяет корректно обрабатывать случай, когда
-                                # пользователь вводит значение равное default (например, 0)
-                                if param_name not in user_inputs:
-                                    all_inputs_filled = False
-                                    break
-                    completed = all_inputs_filled
+            completed = self._is_stage_completed(
+                stage_config,
+                decision_state,
+                params=params,
+                user_inputs=user_inputs,
+            )
 
             stages.append(
                 {
@@ -533,7 +583,10 @@ class GameStateManager:
                     "available": requirements_met,
                     "completed": completed,
                     "missing_requirements": missing_requirements,
-                    "inputs": [inp.get("param") for inp in self._get_stage_inputs(stage_config)],
+                    "inputs": [
+                        inp.get("param")
+                        for inp in self._get_stage_inputs(stage_config)
+                    ],
                 }
             )
 
@@ -543,7 +596,11 @@ class GameStateManager:
         return stages
 
     def _get_next_actions(
-        self, decision_state: DecisionState, user_inputs: list[str] | None = None
+        self,
+        decision_state: DecisionState,
+        user_inputs: list[str] | None = None,
+        params: dict[str, float] | None = None,
+        current_period: int | None = None,
     ) -> list[dict]:
         """
         Возвращает список рекомендуемых следующих действий.
@@ -556,7 +613,12 @@ class GameStateManager:
             Список действий с приоритетом
         """
         actions = []
-        stages = self._get_available_stages(decision_state, user_inputs=user_inputs)
+        stages = self._get_available_stages(
+            decision_state,
+            params=params,
+            user_inputs=user_inputs,
+            current_period=current_period,
+        )
 
         for stage in stages:
             if stage["available"] and not stage["completed"]:
@@ -576,7 +638,11 @@ class GameStateManager:
         return actions
 
     def _can_advance_period(
-        self, decision_state: DecisionState, user_inputs: list[str] | None = None
+        self,
+        decision_state: DecisionState,
+        user_inputs: list[str] | None = None,
+        params: dict[str, float] | None = None,
+        current_period: int | None = None,
     ) -> bool:
         """
         Проверяет, можно ли перейти к следующему периоду.
@@ -584,7 +650,12 @@ class GameStateManager:
         Для перехода необходимо завершить все обязательные этапы.
         В параллельном режиме проверяются все этапы, а не только доступные.
         """
-        stages = self._get_available_stages(decision_state, user_inputs=user_inputs)
+        stages = self._get_available_stages(
+            decision_state,
+            params=params,
+            user_inputs=user_inputs,
+            current_period=current_period,
+        )
 
         for stage in stages:
             if not stage["completed"]:
@@ -660,6 +731,7 @@ class GameStateManager:
         history: list[dict[str, float]],
         user_inputs: list[str] | None = None,
         force: bool = False,
+        current_period: int | None = None,
     ) -> tuple[bool, str | None, dict[str, float]]:
         """
         Устанавливает значение параметра с валидацией.
@@ -680,16 +752,25 @@ class GameStateManager:
             user_inputs = []
         # Проверяем, можно ли заполнять этот параметр (пропускается при force=True)
         if not force:
-            fillable = self._get_fillable_params(decision_state)
+            fillable = self._get_fillable_params(
+                decision_state,
+                params=params,
+                user_inputs=user_inputs,
+                current_period=current_period,
+            )
             if param_name not in fillable and param_name not in user_inputs:
-                return False, f"Параметр {param_name} сейчас недоступен для ввода", params
+                return (
+                    False,
+                    f"Параметр {param_name} сейчас недоступен для ввода",
+                    params,
+                )
 
         # force=True используется для восстановления/сводного ввода и должен
         # сохранять явно переданное значение, даже если текущая формула дала бы
         # другое fixed/bounds значение.
         if not force:
             is_valid, error, bounds = self._calculator.validate_input(
-                params, param_name, value, history
+                params, param_name, value, history, user_inputs
             )
             if not is_valid:
                 return False, error, params

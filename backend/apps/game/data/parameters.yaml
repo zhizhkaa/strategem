@@ -62,7 +62,10 @@ population:
     default: 0
     verbose_name: "Продовольствие на экспорт"
     is_input: true
-    # Рассчитывается как P2 - P9
+    min: 0
+    max: "max(P2 - P9, 0)"
+    depends_on: ["P2", "P9"]
+    decision_group: "food_distribution"
 
   P11:
     default: 0
@@ -86,7 +89,10 @@ population:
     default: 0
     verbose_name: "Товары на экспорт"
     is_input: true
-    # Рассчитывается как P3 - P11 - P12
+    min: 0
+    max: "max(P3 - P11 - P12, 0)"
+    depends_on: ["P3", "P11", "P12"]
+    decision_group: "goods_distribution"
 
 energy:
   E1:
@@ -216,7 +222,10 @@ energy:
     default: 0
     verbose_name: "Энергоресурсы для производства товаров и продовольствия"
     is_input: true
-    # Рассчитывается как E7 - E20 - E21 - E22
+    min: 0
+    max: "max(E7 - E20 - E21 - E22, 0)"
+    depends_on: ["E7", "E20", "E21", "E22"]
+    decision_group: "energy_distribution"
 
   E24:
     default: 0
@@ -231,7 +240,10 @@ energy:
     default: 0
     verbose_name: "Энергоресурсы для производства товаров"
     is_input: true
-    # Рассчитывается как E23 - E24
+    min: 0
+    max: "max(E23 - E24, 0)"
+    depends_on: ["E23", "E24"]
+    decision_group: "energy_production"
 
   E26:
     default: 0
@@ -434,7 +446,10 @@ agriculture:
     default: 0
     verbose_name: "Капиталовложения в защиту окружающей среды"
     is_input: true
-    # Рассчитывается как P12 - E26 - E27 - G18 - G19 - F14
+    min: 0
+    max: "max(P12 - E26 - E27 - G18 - G19 - F14, 0)"
+    depends_on: ["P12", "E26", "E27", "G18", "G19", "F14"]
+    decision_group: "agriculture_investment"
 
 trade:
   TF1:
@@ -537,7 +552,10 @@ trade:
     default: 0
     verbose_name: "Валюта для импорта, суммарно"
     is_input: true
-    # Рассчитывается как TF9 + TF10 + TF11 + TF12 + TF13 - TF14
+    min: 0
+    max: "max(TF9 + TF10 + TF11 + TF12 + TF13 - TF14, 0)"
+    depends_on: ["TF9", "TF10", "TF11", "TF12", "TF13", "TF14"]
+    decision_group: "debt_payment"
 
   TF16:
     default: 0
@@ -561,4 +579,7 @@ trade:
     default: 0
     verbose_name: "Валюта для импорта продовольствия"
     is_input: true
-    # Рассчитывается как TF15 - TF16 - TF17
+    min: 0
+    max: "max(TF15 - TF16 - TF17, 0)"
+    depends_on: ["TF15", "TF16", "TF17"]
+    decision_group: "import_distribution"

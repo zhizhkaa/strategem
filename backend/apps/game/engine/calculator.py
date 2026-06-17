@@ -85,6 +85,10 @@ class GameCalculator:
                 stages[key] = value
         return dict(sorted(stages.items(), key=lambda x: x[1].get("order", 999)))
 
+    def auto_calculate_decision_residuals(self) -> bool:
+        """Возвращает режим авторасчёта остаточных decision-параметров."""
+        return bool(self._decision_order.get("auto_calculate_decision_residuals", True))
+
     def calculate_next_period(
         self,
         current_params: dict[str, float],
@@ -162,12 +166,16 @@ class GameCalculator:
         self,
         params: dict[str, float],
         history: list[dict[str, float]],
+        parameter_names: list[str] | set[str] | tuple[str, ...] | None = None,
     ) -> dict[str, float]:
         decisions = self._formulas.get("decisions", {})
         if not isinstance(decisions, dict):
             return params
 
+        allowed_params = set(parameter_names) if parameter_names is not None else None
         for param_name, formula in decisions.items():
+            if allowed_params is not None and param_name not in allowed_params:
+                continue
             if isinstance(formula, str):
                 try:
                     value = self._evaluate_formula(formula, params, history)
@@ -186,68 +194,88 @@ class GameCalculator:
         self,
         params: dict[str, float],
         history: list[dict[str, float]],
+        user_inputs: list[str] | set[str] | tuple[str, ...] | None = None,
     ) -> dict[str, str]:
-        """Возвращает ошибки перерасхода по остаточным decision-балансам."""
+        """Возвращает ошибки по остаточным decision-балансам."""
         rules = [
             {
                 "available": "P2",
-                "allocated": ["P9"],
-                "errors": ["P9"],
+                "allocated": ["P9", "P10"],
+                "errors": ["P9", "P10"],
                 "label": "продовольствия",
+                "mode": "exact",
             },
             {
                 "available": "P3",
-                "allocated": ["P11", "P12"],
-                "errors": ["P11", "P12"],
+                "allocated": ["P11", "P12", "P13"],
+                "errors": ["P11", "P12", "P13"],
                 "label": "товаров",
+                "mode": "exact",
             },
             {
                 "available": "E7",
-                "allocated": ["E20", "E21", "E22"],
-                "errors": ["E20", "E21", "E22"],
+                "allocated": ["E20", "E21", "E22", "E23"],
+                "errors": ["E20", "E21", "E22", "E23"],
                 "label": "энергоресурсов",
+                "mode": "exact",
             },
             {
                 "available": "E23",
-                "allocated": ["E24"],
-                "errors": ["E24"],
+                "allocated": ["E24", "E25"],
+                "errors": ["E24", "E25"],
                 "label": "энергии для производства",
+                "mode": "exact",
             },
             {
                 "available": "P12",
-                "allocated": ["E26", "E27", "G18", "G19", "F14"],
-                "errors": ["E26", "E27", "G18", "G19", "F14"],
+                "allocated": ["E26", "E27", "G18", "G19", "F14", "F15"],
+                "errors": ["E26", "E27", "G18", "G19", "F14", "F15"],
                 "label": "капиталовложений",
+                "mode": "exact",
             },
             {
                 "available": "TF9 + TF10 + TF11 + TF12 + TF13",
-                "allocated": ["TF14"],
-                "errors": ["TF14"],
+                "allocated": ["TF14", "TF15"],
+                "errors": ["TF14", "TF15"],
                 "label": "валюты до выплаты долга",
+                "mode": "max",
             },
             {
                 "available": "TF15",
-                "allocated": ["TF16", "TF17"],
-                "errors": ["TF16", "TF17"],
+                "allocated": ["TF16", "TF17", "TF18"],
+                "errors": ["TF16", "TF17", "TF18"],
                 "label": "валюты для импорта",
+                "mode": "exact",
             },
         ]
 
         errors = {}
+        user_inputs_set = set(user_inputs) if user_inputs is not None else None
         for rule in rules:
-            available = self._evaluate_formula(rule["available"], params, history)
-            allocated = sum(
+            available_raw = self._evaluate_formula(rule["available"], params, history)
+            allocated_raw = sum(
                 float(params.get(param_name, 0) or 0)
                 for param_name in rule["allocated"]
             )
-            overrun = allocated - available
-            if overrun <= 1e-9:
+            # Balances are displayed with at most 2 decimals. Compare the same
+            # rounded totals so a displayed 12207 can be balanced as 12207.
+            available = self._round_half_up(available_raw, 2)
+            allocated = self._round_half_up(allocated_raw, 2)
+            difference = allocated - available
+            if rule.get("mode") == "exact" and abs(difference) > 1e-9:
+                if difference < 0 and user_inputs_set is not None and not all(
+                    param_name in user_inputs_set for param_name in rule["allocated"]
+                ):
+                    continue
+                message = f"Баланс {rule['available']} не соблюдается"
+            elif difference > 1e-9:
+                message = (
+                    f"Распределение {rule['label']} превышает доступное значение "
+                    f"на {self._round_half_up(difference, 2)}"
+                )
+            else:
                 continue
 
-            message = (
-                f"Распределение {rule['label']} превышает доступное значение "
-                f"на {self._round_half_up(overrun, 2)}"
-            )
             for param_name in rule["errors"]:
                 errors[param_name] = message
 
@@ -275,8 +303,8 @@ class GameCalculator:
         # Устанавливаем значение
         params[param_name] = value
 
-        # Находим и применяем автоматические расчёты
-        if "decisions" in self._formulas:
+        # Находим и применяем автоматические расчёты, если включён legacy-режим.
+        if self.auto_calculate_decision_residuals() and "decisions" in self._formulas:
             decisions = self._formulas["decisions"]
             if isinstance(decisions, dict):
                 for dep_param, formula in decisions.items():
@@ -295,6 +323,7 @@ class GameCalculator:
         param_name: str,
         value: float,
         history: list[dict[str, float]],
+        user_inputs: list[str] | set[str] | tuple[str, ...] | None = None,
     ) -> tuple[bool, str | None, tuple[float | None, float] | None]:
         """
         Проверяет корректность вводимого значения.
@@ -323,6 +352,14 @@ class GameCalculator:
         if max_val is not None:
             max_val = self._round_value(max_val, param_name)
 
+        max_val = self._deferred_max_bound(
+            param_name=param_name,
+            max_val=max_val,
+            params=params,
+            history=history,
+            user_inputs=user_inputs,
+        )
+
         bounds = (min_val, max_val if max_val is not None else float("inf"))
 
         if min_val is not None and value < min_val:
@@ -340,6 +377,32 @@ class GameCalculator:
             )
 
         return True, None, bounds
+
+    def _deferred_max_bound(
+        self,
+        *,
+        param_name: str,
+        max_val: float | None,
+        params: dict[str, float],
+        history: list[dict[str, float]],
+        user_inputs: list[str] | set[str] | tuple[str, ...] | None,
+    ) -> float | None:
+        """
+        Ослабляет циклическую границу E27 до ввода промышленности и с/х.
+
+        E27 логически ограничен G18 + F14, но эти решения принимают другие
+        министры. До их ввода энергетик должен иметь возможность сохранить E27;
+        после ввода G18 и F14 полная граница снова применяется.
+        """
+        if param_name != "E27" or user_inputs is None:
+            return max_val
+
+        user_inputs_set = set(user_inputs)
+        if {"G18", "F14"}.issubset(user_inputs_set):
+            return max_val
+
+        fallback = self._evaluate_formula("max(P12 - E26, 0)", params, history)
+        return self._round_value(fallback, param_name)
 
     def get_parameter_bounds(
         self,

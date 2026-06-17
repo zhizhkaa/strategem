@@ -7,6 +7,7 @@ function chartsApp() {
             error: null,
             currentPeriod: 1,
             totalPeriods: 10,
+            initialized: false,
             chartsData: null,
             allPeriods: [],
 
@@ -21,6 +22,9 @@ function chartsApp() {
 
             // Methods
             async init() {
+                if (this.initialized) return;
+                this.initialized = true;
+
                 this.gameId = localStorage.getItem("strategem_game");
                 this.teamName =
                     localStorage.getItem("strategem_team_name") || "Команда";
@@ -73,8 +77,10 @@ function chartsApp() {
                 const paramsMap = new Map();
                 
                 this.allPeriods.forEach(period => {
-                    Object.entries(period.parameters || {}).forEach(([code, value]) => {
+                    Object.entries(period).forEach(([code, value]) => {
                         if (!paramsMap.has(code)) {
+                            if (!/^(P|E|F|G|TF)\d+$/.test(code)) return;
+                            if (!Number.isFinite(Number(value))) return;
                             paramsMap.set(code, {
                                 code: code,
                                 name: this.getParameterName(code),
@@ -92,7 +98,7 @@ function chartsApp() {
             getParameterName(code) {
                 // Try to find in existing chart data
                 for (const category of Object.values(this.chartsData || {})) {
-                    const param = category.find(p => p.name === code);
+                    const param = category.find(p => p.parameter === code);
                     if (param) return param.verbose_name || code;
                 }
                 return code;
@@ -161,15 +167,12 @@ function chartsApp() {
                 const ctx = document.getElementById("customChart");
                 if (!ctx) return;
 
-                // Destroy previous chart
-                if (this.charts.custom) {
-                    this.charts.custom.destroy();
-                }
+                this.destroyChart("custom", ctx);
 
                 const datasets = this.customChartParams.map((paramCode, index) => {
                     const data = this.allPeriods.map(period => ({
                         x: period.period_number,
-                        y: period.parameters[paramCode] || 0
+                        y: Number(period[paramCode] || 0),
                     }));
 
                     const colors = [
@@ -204,90 +207,94 @@ function chartsApp() {
                 this.renderEnvironmentChart();
             },
 
-            renderPopulationChart() {
-                const ctx = document.getElementById("populationChart");
-                if (!ctx || !this.chartsData?.population) return;
+            destroyChart(key, ctx) {
+                if (this.charts[key]) {
+                    this.charts[key].destroy();
+                    delete this.charts[key];
+                }
+                const existingChart = Chart.getChart?.(ctx);
+                if (existingChart) {
+                    existingChart.destroy();
+                }
+            },
 
-                const datasets = this.createDatasets(
-                    this.chartsData.population,
-                    ["#3b82f6", "#60a5fa", "#93c5fd", "#1d4ed8", "#2563eb"],
-                );
+            renderChart(key, canvasId, data, colors, xLabel, yLabel) {
+                const ctx = document.getElementById(canvasId);
+                if (!ctx || !data?.length) return;
+                this.destroyChart(key, ctx);
 
-                this.charts.population = new Chart(ctx, {
+                this.charts[key] = new Chart(ctx, {
                     type: "line",
-                    data: { datasets },
-                    options: this.getChartOptions("Период", "Значение"),
+                    data: { datasets: this.createDatasets(data, colors) },
+                    options: this.getChartOptions(xLabel, yLabel),
                 });
+            },
+
+            renderPopulationChart() {
+                this.renderChart(
+                    "population",
+                    "populationChart",
+                    this.chartsData?.population,
+                    ["#3b82f6", "#60a5fa", "#93c5fd", "#1d4ed8", "#2563eb", "#1e40af"],
+                    "Период",
+                    "Значение",
+                );
             },
 
             renderEconomyChart() {
-                const ctx = document.getElementById("economyChart");
-                if (!ctx || !this.chartsData?.economy) return;
-
-                const datasets = this.createDatasets(this.chartsData.economy, [
-                    "#22c55e",
-                    "#4ade80",
-                    "#86efac",
-                    "#15803d",
-                ]);
-
-                this.charts.economy = new Chart(ctx, {
-                    type: "line",
-                    data: { datasets },
-                    options: this.getChartOptions("Период", "Значение"),
-                });
+                this.renderChart(
+                    "economy",
+                    "economyChart",
+                    this.chartsData?.economy,
+                    ["#22c55e", "#4ade80", "#86efac", "#15803d"],
+                    "Период",
+                    "Производство",
+                );
             },
 
             renderCapitalChart() {
-                const ctx = document.getElementById("capitalChart");
-                if (!ctx || !this.chartsData?.capital) return;
-
-                const datasets = this.createDatasets(this.chartsData.capital, [
-                    "#eab308",
-                    "#facc15",
-                    "#fde047",
-                    "#ca8a04",
-                ]);
-
-                this.charts.capital = new Chart(ctx, {
-                    type: "line",
-                    data: { datasets },
-                    options: this.getChartOptions("Период", "Значение"),
-                });
+                this.renderChart(
+                    "capital",
+                    "capitalChart",
+                    this.chartsData?.capital,
+                    ["#eab308", "#facc15", "#fde047", "#ca8a04"],
+                    "Период",
+                    "Капитал",
+                );
             },
 
             renderFinanceChart() {
-                const ctx = document.getElementById("financeChart");
-                if (!ctx || !this.chartsData?.finance) return;
-
-                const datasets = this.createDatasets(this.chartsData.finance, [
-                    "#a855f7",
-                    "#c084fc",
-                    "#d8b4fe",
-                    "#7c3aed",
-                ]);
-
-                this.charts.finance = new Chart(ctx, {
-                    type: "line",
-                    data: { datasets },
-                    options: this.getChartOptions("Период", "Значение"),
-                });
+                this.renderChart(
+                    "finance",
+                    "financeChart",
+                    this.chartsData?.finance,
+                    [
+                        "#a855f7",
+                        "#c084fc",
+                        "#d8b4fe",
+                        "#7c3aed",
+                        "#16a34a",
+                        "#22c55e",
+                        "#86efac",
+                        "#c026d3",
+                        "#e879f9",
+                        "#f5d0fe",
+                        "#8b5cf6",
+                    ],
+                    "Период",
+                    "Финансы",
+                );
             },
 
             renderEnvironmentChart() {
-                const ctx = document.getElementById("environmentChart");
-                if (!ctx || !this.chartsData?.environment) return;
-
-                const datasets = this.createDatasets(
-                    this.chartsData.environment,
+                this.renderChart(
+                    "environment",
+                    "environmentChart",
+                    this.chartsData?.environment,
                     ["#14b8a6", "#2dd4bf", "#5eead4", "#0d9488"],
+                    "Период",
+                    "Экология",
                 );
-
-                this.charts.environment = new Chart(ctx, {
-                    type: "line",
-                    data: { datasets },
-                    options: this.getChartOptions("Период", "Значение"),
-                });
             },
 
             createDatasets(data, colors) {
@@ -311,7 +318,15 @@ function chartsApp() {
                 }));
             },
 
+            formatChartValue(value) {
+                return new Intl.NumberFormat("ru-RU", {
+                    notation: "compact",
+                    maximumFractionDigits: 1,
+                }).format(value);
+            },
+
             getChartOptions(xLabel, yLabel) {
+                const formatter = this.formatChartValue;
                 return {
                     responsive: true,
                     maintainAspectRatio: false,
@@ -334,13 +349,7 @@ function chartsApp() {
                             bodyFont: { size: 13 },
                             callbacks: {
                                 label: function (context) {
-                                    let value = context.parsed.y;
-                                    if (value !== null) {
-                                        value = new Intl.NumberFormat(
-                                            "ru-RU",
-                                        ).format(value);
-                                    }
-                                    return `${context.dataset.label}: ${value}`;
+                                    return `${context.dataset.label}: ${formatter(context.parsed.y)}`;
                                 },
                             },
                         },
@@ -365,10 +374,7 @@ function chartsApp() {
                             },
                             ticks: {
                                 callback: function (value) {
-                                    return new Intl.NumberFormat("ru-RU", {
-                                        notation: "compact",
-                                        maximumFractionDigits: 1,
-                                    }).format(value);
+                                    return formatter(value);
                                 },
                             },
                         },

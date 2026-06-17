@@ -219,7 +219,9 @@ class GameViewSet(viewsets.ModelViewSet):
 
         error_params = []
         residual_error_params = set(
-            calculator.get_decision_residual_errors(params, history)
+            calculator.get_decision_residual_errors(
+                params, history, current_period.user_inputs
+            )
         )
         for param_name in current_period.user_inputs:
             if param_name not in residual_error_params:
@@ -231,7 +233,11 @@ class GameViewSet(viewsets.ModelViewSet):
             if value is None:
                 continue
             is_valid, _err, _bounds = calculator.validate_input(
-                params, param_name, value, history
+                params,
+                param_name,
+                value,
+                history,
+                current_period.user_inputs,
             )
             if not is_valid and param_name not in error_params:
                 error_params.append(param_name)
@@ -270,7 +276,10 @@ class GameViewSet(viewsets.ModelViewSet):
             )
 
         can_advance = state_manager._can_advance_period(
-            decision_state, current_period.user_inputs
+            decision_state,
+            current_period.user_inputs,
+            params=params,
+            current_period=game.current_period,
         )
 
         if not can_advance:
@@ -441,11 +450,17 @@ class GameViewSet(viewsets.ModelViewSet):
             if value is None:
                 continue
             is_valid, _err, _bounds = calculator.validate_input(
-                params, param_name, value, history
+                params,
+                param_name,
+                value,
+                history,
+                current_period.user_inputs,
             )
             if not is_valid:
                 error_params.append(param_name)
-        for param_name in calculator.get_decision_residual_errors(params, history):
+        for param_name in calculator.get_decision_residual_errors(
+            params, history, current_period.user_inputs
+        ):
             if param_name not in error_params:
                 error_params.append(param_name)
 
@@ -463,9 +478,14 @@ class GameViewSet(viewsets.ModelViewSet):
                     if not calculator.is_fixed_parameter(p):
                         incomplete_params.append(p)
         else:
-            fillable = state_manager._get_fillable_params(decision_state)
+            fillable = state_manager._get_fillable_params(
+                decision_state,
+                params=params,
+                user_inputs=current_period.user_inputs,
+                current_period=game.current_period,
+            )
             stages = state_manager._get_available_stages(
-                decision_state, params, current_period.user_inputs
+                decision_state, params, current_period.user_inputs, game.current_period
             )
             for stage in stages:
                 if not stage["available"] or stage["completed"]:
@@ -504,7 +524,10 @@ class GameViewSet(viewsets.ModelViewSet):
         # --- can_advance ---
         can_advance = (
             state_manager._can_advance_period(
-                decision_state, current_period.user_inputs
+                decision_state,
+                current_period.user_inputs,
+                params=params,
+                current_period=game.current_period,
             )
             and len(error_params) == 0
         )
@@ -604,8 +627,14 @@ class GameViewSet(viewsets.ModelViewSet):
             ],
             "finance": [
                 ("TF1", "Внешний долг"),
+                ("TF10", "Экспорт энергии"),
+                ("TF11", "Экспорт товаров"),
+                ("TF12", "Экспорт продовольствия"),
                 ("TF13", "Новый кредит"),
                 ("TF14", "Выплаты по долгу"),
+                ("TF16", "Импорт энергии"),
+                ("TF17", "Импорт товаров"),
+                ("TF18", "Импорт продовольствия"),
             ],
         }
 

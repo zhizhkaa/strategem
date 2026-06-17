@@ -12,6 +12,7 @@ URL configuration for strategem project.
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
+from django.http import HttpResponseForbidden
 from django.shortcuts import render
 from django.urls import include, path
 from django.views.decorators.csrf import ensure_csrf_cookie
@@ -81,6 +82,17 @@ def docs_view(request):
     return render(request, "game/docs.html")
 
 
+def admin_session_required(view_func):
+    """Закрывает служебные страницы от игроков без админской сессии."""
+
+    def wrapped(request, *args, **kwargs):
+        if not request.session.get("is_admin", False):
+            return HttpResponseForbidden("Доступно только администратору")
+        return view_func(request, *args, **kwargs)
+
+    return wrapped
+
+
 urlpatterns = [
     # ========================================
     # DJANGO ADMIN (стандартная админка)
@@ -94,11 +106,15 @@ urlpatterns = [
     # API управления (факультеты, группы, команды)
     path("api/management/", include("apps.management.urls")),
     # OpenAPI Schema
-    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    path(
+        "api/schema/",
+        admin_session_required(SpectacularAPIView.as_view()),
+        name="schema",
+    ),
     # Swagger UI
     path(
         "api/docs/",
-        SpectacularSwaggerView.as_view(url_name="schema"),
+        admin_session_required(SpectacularSwaggerView.as_view(url_name="schema")),
         name="swagger-ui",
     ),
     # ========================================

@@ -20,6 +20,7 @@ from .views import (
     CalculatorResetView,
     CalculatorStateView,
     DocumentDeleteView,
+    DocumentDownloadView,
     DocumentView,
     FacultyViewSet,
     GameViewSet,
@@ -81,6 +82,12 @@ urlpatterns = [
     # GET /api/documents/         - список файлов
     # POST /api/documents/        - загрузить файл (admin)
     path("documents/", DocumentView.as_view(), name="documents"),
+    # GET /api/documents/{id}/download/ - скачать файл
+    path(
+        "documents/<int:doc_id>/download/",
+        DocumentDownloadView.as_view(),
+        name="document-download",
+    ),
     # DELETE /api/documents/{id}/ - удалить файл (admin)
     path("documents/<int:doc_id>/", DocumentDeleteView.as_view(), name="document-delete"),
 ]

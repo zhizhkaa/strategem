@@ -1,13 +1,16 @@
 """Regression tests for game API, formulas, models, and frontend assets."""
 
 import json
+import tempfile
 from pathlib import Path
 
 from apps.management.models import Faculty, Group, Team
 from apps.game.engine import FormulaValidator, get_calculator, get_state_manager
 from apps.game.engine.state_manager import DecisionState
-from apps.game.models import Game, GameDifficulty, GameStatus
+from apps.game.models import Document, Game, GameDifficulty, GameStatus
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
+from django.test.utils import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -33,7 +36,7 @@ class GameApiTests(APITestCase):
     def _create_game(
         self,
         difficulty: str = GameDifficulty.STANDARD,
-        total_periods: int = 15,
+        total_periods: int = 12,
     ) -> Game:
         team = self._create_team()
         response = self.client.post(
@@ -48,7 +51,7 @@ class GameApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         return Game.objects.get(team=team)
 
-    def test_create_game_uses_standard_profile_and_15_periods(self):
+    def test_create_game_uses_standard_profile_and_12_periods(self):
         team = self._create_team()
 
         response = self.client.post(
@@ -56,7 +59,7 @@ class GameApiTests(APITestCase):
             {
                 "team": team.id,
                 "difficulty": GameDifficulty.STANDARD,
-                "total_periods": 15,
+                "total_periods": 12,
             },
             format="json",
         )
@@ -68,7 +71,7 @@ class GameApiTests(APITestCase):
 
         self.assertEqual(game.status, GameStatus.ACTIVE)
         self.assertEqual(game.difficulty, GameDifficulty.STANDARD)
-        self.assertEqual(game.total_periods, 15)
+        self.assertEqual(game.total_periods, 12)
         self.assertEqual(period.E7, 14500)
         self.assertEqual(period.E17, 12000)
         self.assertEqual(period.E19, 1500)
@@ -143,7 +146,7 @@ class GameApiTests(APITestCase):
         self.assertEqual(detail_response.data["difficulty"], GameDifficulty.TOUGH)
         self.assertEqual(detail_response.data["difficulty_display"], "Tough")
 
-    def test_rejects_legacy_12_periods(self):
+    def test_rejects_unsupported_15_periods(self):
         team = self._create_team()
 
         response = self.client.post(
@@ -151,7 +154,7 @@ class GameApiTests(APITestCase):
             {
                 "team": team.id,
                 "difficulty": GameDifficulty.STANDARD,
-                "total_periods": 12,
+                "total_periods": 15,
             },
             format="json",
         )
@@ -159,11 +162,511 @@ class GameApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("total_periods", response.data)
 
+    def test_team_password_is_required_to_enter_game(self):
+        team = Team.objects.create(
+            name="Команда с паролем",
+            group=self.group,
+            access_password="luna-42",
+        )
+        Game.objects.create(
+            team=team,
+            status=GameStatus.ACTIVE,
+            difficulty=GameDifficulty.STANDARD,
+            total_periods=12,
+        )
+
+        session = self.client.session
+        session["is_admin"] = False
+        session.save()
+
+        missing_response = self.client.post(f"/api/teams/{team.id}/game/", {}, format="json")
+        wrong_response = self.client.post(
+            f"/api/teams/{team.id}/game/",
+            {"password": "wrong"},
+            format="json",
+        )
+        ok_response = self.client.post(
+            f"/api/teams/{team.id}/game/",
+            {"password": "luna-42"},
+            format="json",
+        )
+
+        self.assertEqual(missing_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(wrong_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(ok_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(ok_response.data["game"]["team"], team.id)
+
+    def test_team_list_never_returns_raw_password(self):
+        team = Team.objects.create(
+            name="Команда пароль",
+            group=self.group,
+            access_password="atlas-17",
+        )
+
+        session = self.client.session
+        session["is_admin"] = False
+        session.save()
+        public_response = self.client.get("/api/teams/")
+
+        session = self.client.session
+        session["is_admin"] = True
+        session.save()
+        admin_response = self.client.get("/api/teams/")
+
+        self.assertEqual(public_response.status_code, status.HTTP_200_OK)
+        self.assertNotIn("access_password", public_response.data[0])
+        self.assertTrue(public_response.data[0]["has_access_password"])
+        self.assertEqual(admin_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(admin_response.data[0]["id"], team.id)
+        self.assertNotIn("access_password", admin_response.data[0])
+        self.assertTrue(admin_response.data[0]["has_access_password"])
+
+    def test_team_list_reports_finished_game_status(self):
+        active_team = Team.objects.create(
+            name="Активная команда",
+            group=self.group,
+            access_password="atlas-17",
+        )
+        finished_team = Team.objects.create(
+            name="Завершившая команда",
+            group=self.group,
+            access_password="terra-24",
+        )
+        Game.objects.create(
+            team=active_team,
+            status=GameStatus.ACTIVE,
+            difficulty=GameDifficulty.STANDARD,
+            total_periods=12,
+        )
+        Game.objects.create(
+            team=finished_team,
+            status=GameStatus.FINISHED,
+            difficulty=GameDifficulty.STANDARD,
+            total_periods=12,
+        )
+
+        response = self.client.get("/api/teams/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        by_id = {team_data["id"]: team_data for team_data in response.data}
+        self.assertTrue(by_id[active_team.id]["has_active_game"])
+        self.assertEqual(by_id[active_team.id]["game_status"], GameStatus.ACTIVE)
+        self.assertFalse(by_id[finished_team.id]["has_active_game"])
+        self.assertTrue(by_id[finished_team.id]["has_finished_game"])
+        self.assertEqual(by_id[finished_team.id]["game_status"], GameStatus.FINISHED)
+
+    def test_api_docs_require_admin_session(self):
+        session = self.client.session
+        session["is_admin"] = False
+        session.save()
+
+        docs_response = self.client.get("/api/docs/")
+        schema_response = self.client.get("/api/schema/")
+
+        self.assertEqual(docs_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(schema_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        self._set_admin_session()
+        admin_docs_response = self.client.get("/api/docs/")
+
+        self.assertEqual(admin_docs_response.status_code, status.HTTP_200_OK)
+
+    def test_admin_can_update_team_password(self):
+        team = Team.objects.create(
+            name="Команда пароль update",
+            group=self.group,
+            access_password="atlas-17",
+        )
+
+        response = self.client.patch(
+            f"/api/teams/{team.id}/",
+            {"access_password": "nova-55"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        team.refresh_from_db()
+        self.assertNotEqual(team.access_password, "nova-55")
+        self.assertTrue(team.check_access_password("nova-55"))
+        self.assertNotIn("access_password", response.data)
+        self.assertTrue(response.data["has_access_password"])
+
+    def test_admin_cannot_save_too_short_team_password(self):
+        team = Team.objects.create(
+            name="Команда короткий пароль",
+            group=self.group,
+            access_password="atlas-17",
+        )
+
+        response = self.client.patch(
+            f"/api/teams/{team.id}/",
+            {"access_password": "a"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("access_password", response.data)
+
+    def test_decision_structure_treats_residual_decisions_as_manual_inputs(self):
+        response = self.client.get("/api/games/decision-structure/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        first_group = response.data["summary_groups"][0]
+        population_decision = response.data["ministers"]["population"]["decisions"][0]
+
+        self.assertIn("P9", first_group["inputs"])
+        self.assertIn("P10", first_group["inputs"])
+        self.assertNotIn("P10", first_group["auto"])
+        self.assertIn("P10", population_decision["inputs"])
+        self.assertNotIn("P10", population_decision["auto"])
+
+    def test_batch_accepts_manual_residual_decision_values(self):
+        game = self._create_game(
+            difficulty=GameDifficulty.SIMPLE,
+            total_periods=10,
+        )
+
+        response = self.client.post(
+            f"/api/games/{game.id}/parameters/batch/",
+            {"parameters": {"P9": 1900, "P10": 1400}, "minister": "population"},
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            msg=getattr(response, "data", response.content),
+        )
+        self.assertTrue(response.data["success"])
+
+        period = game.periods.get(period_number=1)
+        self.assertEqual(period.P9, 1900)
+        self.assertEqual(period.P10, 1400)
+        self.assertIn("P10", period.user_inputs)
+
+    def test_goods_distribution_is_available_without_food_distribution(self):
+        game = self._create_game(
+            difficulty=GameDifficulty.SIMPLE,
+            total_periods=10,
+        )
+
+        response = self.client.get(f"/api/games/{game.id}/state/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        stages = {stage["key"]: stage for stage in response.data["available_stages"]}
+        self.assertTrue(stages["food_distribution"]["available"])
+        self.assertTrue(stages["goods_distribution"]["available"])
+        self.assertEqual(response.data["parameters"]["P11"]["status"], "next_to_fill")
+        self.assertEqual(response.data["parameters"]["P12"]["status"], "next_to_fill")
+        self.assertEqual(response.data["parameters"]["P13"]["status"], "next_to_fill")
+
+    def test_batch_reports_food_distribution_underallocation(self):
+        game = self._create_game(
+            difficulty=GameDifficulty.STANDARD,
+            total_periods=10,
+        )
+
+        response = self.client.post(
+            f"/api/games/{game.id}/parameters/batch/",
+            {"parameters": {"P9": 3000, "P10": 200}, "minister": "population"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["success"])
+        self.assertIn("P9", response.data["errors"])
+        self.assertIn("P10", response.data["errors"])
+        self.assertEqual(response.data["errors"]["P9"], "Баланс P2 не соблюдается")
+        self.assertEqual(response.data["errors"]["P10"], "Баланс P2 не соблюдается")
+        self.assertEqual(response.data["message"], "Баланс P2 не соблюдается")
+        self.assertNotIn("E20", response.data["errors"])
+        self.assertNotIn("F15", response.data["errors"])
+        self.assertIn("P9", response.data["validation_state"]["errors"])
+        self.assertIn("P10", response.data["validation_state"]["errors"])
+        self.assertNotIn("E20", response.data["validation_state"]["errors"])
+        self.assertNotIn("F15", response.data["validation_state"]["errors"])
+
+        game.refresh_from_db()
+        self.assertEqual(game.decision_finance, 0)
+        self.assertEqual(game.decision_capital, 0)
+
+    def test_batch_accepts_energy_production_matching_displayed_e23(self):
+        game = self._create_game(
+            difficulty=GameDifficulty.STANDARD,
+            total_periods=10,
+        )
+        game.decision_finance = 3
+        game.decision_energy = 1
+        game.save()
+
+        period = game.get_current_period_obj()
+        period.E7 = 12206.999
+        period.E20 = 0
+        period.E21 = 0
+        period.E22 = 0
+        period.E23 = 12206.999
+        period.user_inputs = ["E20", "E21", "E22", "E23"]
+        period.save()
+
+        response = self.client.post(
+            f"/api/games/{game.id}/parameters/batch/",
+            {"parameters": {"E24": 12000, "E25": 207}, "minister": "energy"},
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            msg=getattr(response, "data", response.content),
+        )
+        self.assertTrue(response.data["success"], msg=response.data)
+        self.assertEqual(response.data["errors"], {})
+
+    def test_first_period_industry_uses_initial_capital_requirements(self):
+        game = self._create_game(
+            difficulty=GameDifficulty.SIMPLE,
+            total_periods=10,
+        )
+
+        state_response = self.client.get(f"/api/games/{game.id}/state/")
+        self.assertEqual(state_response.status_code, status.HTTP_200_OK)
+
+        stages = {
+            stage["key"]: stage for stage in state_response.data["available_stages"]
+        }
+        self.assertTrue(stages["industry_investment"]["available"])
+        self.assertEqual(
+            state_response.data["parameters"]["G18"]["status"],
+            "next_to_fill",
+        )
+
+    def test_first_period_trade_finance_uses_initial_requirements(self):
+        game = self._create_game(
+            difficulty=GameDifficulty.SIMPLE,
+            total_periods=10,
+        )
+
+        state_response = self.client.get(f"/api/games/{game.id}/state/")
+        self.assertEqual(state_response.status_code, status.HTTP_200_OK)
+
+        stages = {
+            stage["key"]: stage for stage in state_response.data["available_stages"]
+        }
+        self.assertTrue(stages["debt_payment"]["available"])
+        self.assertTrue(stages["import_distribution"]["available"])
+        self.assertEqual(
+            state_response.data["parameters"]["TF14"]["status"],
+            "next_to_fill",
+        )
+        self.assertEqual(
+            state_response.data["parameters"]["TF16"]["status"],
+            "next_to_fill",
+        )
+
+    def test_state_marks_dynamic_zero_bound_decisions_as_not_fixed(self):
+        game = self._create_game(
+            difficulty=GameDifficulty.SIMPLE,
+            total_periods=10,
+        )
+
+        state_response = self.client.get(f"/api/games/{game.id}/state/")
+        self.assertEqual(state_response.status_code, status.HTTP_200_OK)
+
+        parameters = state_response.data["parameters"]
+        self.assertTrue(parameters["E20"]["is_fixed"])
+        for param in (
+            "E27",
+            "G18",
+            "G19",
+            "F14",
+            "F15",
+            "TF14",
+            "TF15",
+            "TF16",
+            "TF17",
+            "TF18",
+        ):
+            with self.subTest(param=param):
+                self.assertFalse(parameters[param]["is_fixed"])
+
+    def test_first_period_energy_can_submit_e27_before_industry_and_agriculture(self):
+        game = self._create_game(
+            difficulty=GameDifficulty.SIMPLE,
+            total_periods=10,
+        )
+
+        population_response = self.client.post(
+            f"/api/games/{game.id}/parameters/batch/",
+            {
+                "parameters": {
+                    "P9": 1900,
+                    "P10": 1400,
+                    "P11": 2000,
+                    "P12": 1500,
+                    "P13": 0,
+                },
+                "minister": "population",
+            },
+            format="json",
+        )
+        self.assertEqual(
+            population_response.status_code,
+            status.HTTP_200_OK,
+            msg=getattr(population_response, "data", population_response.content),
+        )
+        self.assertTrue(
+            population_response.data["success"],
+            msg=population_response.data,
+        )
+
+        energy_response = self.client.post(
+            f"/api/games/{game.id}/parameters/batch/",
+            {"parameters": {"E26": 500, "E27": 300}, "minister": "energy"},
+            format="json",
+        )
+
+        self.assertEqual(
+            energy_response.status_code,
+            status.HTTP_200_OK,
+            msg=getattr(energy_response, "data", energy_response.content),
+        )
+        self.assertTrue(energy_response.data["success"], msg=energy_response.data)
+
+        period = game.get_current_period_obj()
+        period.refresh_from_db()
+        self.assertEqual(period.E26, 500)
+        self.assertEqual(period.E27, 300)
+
+    def test_first_period_industry_can_submit_before_energy_investment(self):
+        game = self._create_game(
+            difficulty=GameDifficulty.SIMPLE,
+            total_periods=10,
+        )
+
+        population_response = self.client.post(
+            f"/api/games/{game.id}/parameters/batch/",
+            {
+                "parameters": {
+                    "P9": 1900,
+                    "P10": 1400,
+                    "P11": 2000,
+                    "P12": 1500,
+                    "P13": 0,
+                },
+                "minister": "population",
+            },
+            format="json",
+        )
+        self.assertEqual(
+            population_response.status_code,
+            status.HTTP_200_OK,
+            msg=getattr(population_response, "data", population_response.content),
+        )
+        self.assertTrue(
+            population_response.data["success"],
+            msg=population_response.data,
+        )
+
+        industry_response = self.client.post(
+            f"/api/games/{game.id}/parameters/batch/",
+            {"parameters": {"G18": 100, "G19": 200}, "minister": "industry"},
+            format="json",
+        )
+
+        self.assertEqual(
+            industry_response.status_code,
+            status.HTTP_200_OK,
+            msg=getattr(industry_response, "data", industry_response.content),
+        )
+        self.assertTrue(
+            industry_response.data["success"],
+            msg=industry_response.data,
+        )
+
+        game.refresh_from_db()
+        period = game.get_current_period_obj()
+        self.assertEqual(period.G18, 100)
+        self.assertEqual(period.G19, 200)
+        self.assertEqual(game.decision_capital, 3)
+
+        state_response = self.client.get(f"/api/games/{game.id}/state/")
+        stages = {
+            stage["key"]: stage for stage in state_response.data["available_stages"]
+        }
+        self.assertTrue(stages["industry_investment"]["completed"])
+        self.assertFalse(stages["energy_investment"]["completed"])
+
+    def test_batch_recalculates_hidden_fixed_currency_fields_before_validation(self):
+        game = self._create_game(
+            difficulty=GameDifficulty.SIMPLE,
+            total_periods=10,
+        )
+        game.decision_capital = 1
+        game.decision_energy = 1
+        game.decision_finance = 3
+        game.decision_import = 3
+        game.save()
+
+        period = game.get_current_period_obj()
+        period.TF10 = 0
+        period.TF11 = 0
+        period.TF12 = 0
+        period.E7 = 14500
+        period.user_inputs = ["TF10", "TF11", "TF12"]
+        period.save()
+
+        response = self.client.post(
+            f"/api/games/{game.id}/parameters/batch/",
+            {
+                "parameters": {
+                    "P9": 3000,
+                    "P10": 300,
+                    "P11": 1000,
+                    "P12": 1000,
+                    "P13": 1500,
+                    "E21": 1000,
+                    "E22": 1000,
+                    "E23": 12300,
+                    "E24": 12000,
+                    "E25": 300,
+                    "E26": 0,
+                    "E27": 0,
+                    "G18": 0,
+                    "G19": 0,
+                    "F14": 500,
+                    "F15": 500,
+                    "TF13": 0,
+                    "TF14": 0,
+                    "TF15": 0,
+                    "TF16": 0,
+                    "TF17": 0,
+                    "TF18": 0,
+                }
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            msg=getattr(response, "data", response.content),
+        )
+        self.assertTrue(response.data["success"], msg=response.data)
+        self.assertNotIn("TF10", response.data["errors"])
+        self.assertEqual(response.data["auto_calculated"]["TF10"], 1000.0)
+        self.assertEqual(response.data["auto_calculated"]["TF11"], 1500.0)
+        self.assertEqual(response.data["auto_calculated"]["TF12"], 300.0)
+
+        period.refresh_from_db()
+        self.assertEqual(period.TF10, 1000)
+        self.assertEqual(period.TF11, 1500)
+        self.assertEqual(period.TF12, 300)
+        self.assertNotIn("TF10", period.user_inputs)
+
     def test_batch_parameter_submission_returns_blocking_incomplete_state(self):
         game = self._create_game()
         period = game.get_current_period_obj()
-        calculator = get_calculator()
-        state_manager = get_state_manager()
 
         response = self.client.post(
             f"/api/games/{game.id}/parameters/batch/",
@@ -177,22 +680,36 @@ class GameApiTests(APITestCase):
         self.assertIn("validation_state", response.data)
         self.assertEqual(response.data["validation_state"]["errors"], [])
 
-        decision_state = DecisionState()
-        decision_state.from_dict(game.get_decision_states())
-        decision_state.set("finance", 1)
-        fillable_after_p9 = state_manager._get_fillable_params(decision_state)
         expected_incomplete = {
-            param
-            for param in fillable_after_p9
-            if param != "P9" and not calculator.is_fixed_parameter(param)
+            "P10",
+            "P11",
+            "P12",
+            "P13",
+            "E20",
+            "E21",
+            "E22",
+            "E23",
+            "E24",
+            "E25",
+            "E26",
+            "E27",
+            "G18",
+            "G19",
+            "F14",
+            "F15",
+            "TF13",
+            "TF14",
+            "TF15",
+            "TF16",
+            "TF17",
+            "TF18",
         }
         actual_incomplete = set(response.data["validation_state"]["incomplete"])
 
-        self.assertTrue(expected_incomplete)
         self.assertSetEqual(actual_incomplete, expected_incomplete)
         self.assertIn("population", response.data["validation_state"]["by_minister"])
         self.assertIn(
-            "P11",
+            "P10",
             response.data["validation_state"]["by_minister"]["population"]["incomplete"],
         )
 
@@ -277,6 +794,54 @@ class GameApiTests(APITestCase):
         self.assertEqual(next_period.P10, 0)
         self.assertEqual(next_period.P11, 0)
 
+    def test_admin_calculator_recalculates_fixed_currency_fields_before_validation(self):
+        game = self._create_game(
+            difficulty=GameDifficulty.SIMPLE,
+            total_periods=10,
+        )
+        period_1_inputs = {
+            "P9": 1900,
+            "P10": 1400,
+            "P11": 2000,
+            "P12": 1500,
+            "P13": 0,
+            "E20": 400,
+            "E21": 0,
+            "E22": 0,
+            "E23": 14600,
+            "E24": 8000,
+            "E25": 6600,
+            "E26": 500,
+            "E27": 300,
+            "G18": 100,
+            "G19": 400,
+            "F14": 200,
+            "F15": 0,
+            "TF13": 1000,
+            "TF14": 0,
+            "TF15": 2400,
+            "TF16": 1000,
+            "TF17": 1400,
+            "TF18": 0,
+        }
+
+        response = self.client.post(
+            f"/api/admin/calculator/{game.id}/calculate/",
+            {"parameters": period_1_inputs},
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            msg=getattr(response, "data", response.content),
+        )
+
+        completed_period = game.periods.get(period_number=1)
+        self.assertEqual(completed_period.TF10, 0)
+        self.assertEqual(completed_period.TF11, 0)
+        self.assertEqual(completed_period.TF12, 1400)
+
     def test_admin_calculator_rejects_capital_investment_overrun(self):
         game = self._create_game(
             difficulty=GameDifficulty.SIMPLE,
@@ -284,20 +849,28 @@ class GameApiTests(APITestCase):
         )
         overspent_inputs = {
             "P9": 0,
+            "P10": 3300,
             "P11": 0,
             "P12": 1000,
+            "P13": 2500,
+            "E20": 0,
             "E21": 0,
             "E22": 0,
+            "E23": 15000,
             "E24": 0,
+            "E25": 15000,
             "E26": 700,
             "E27": 400,
             "G18": 200,
             "G19": 100,
             "F14": 115,
+            "F15": 0,
             "TF13": 0,
             "TF14": 0,
+            "TF15": 0,
             "TF16": 0,
             "TF17": 0,
+            "TF18": 0,
         }
 
         response = self.client.post(
@@ -319,21 +892,29 @@ class GameApiTests(APITestCase):
         )
         period_1_inputs = [
             ("P9", 1900),
+            ("P10", 1400),
             ("TF12", 1400),
             ("P11", 2000),
             ("P12", 1500),
+            ("P13", 0),
+            ("E20", 400),
             ("E21", 0),
             ("E22", 0),
+            ("E23", 14600),
             ("E24", 8000),
+            ("E25", 6600),
             ("E26", 500),
             ("G18", 100),
             ("F14", 200),
             ("E27", 300),
             ("G19", 400),
+            ("F15", 0),
             ("TF13", 1000),
             ("TF14", 0),
+            ("TF15", 2400),
             ("TF16", 1000),
             ("TF17", 1400),
+            ("TF18", 0),
         ]
 
         for param, value in period_1_inputs:
@@ -370,6 +951,31 @@ class GameApiTests(APITestCase):
         self.assertEqual(new_period.TF12, 0)
         self.assertNotEqual(new_period.P10, 911)
 
+        state_response = self.client.get(f"/api/games/{game.id}/state/")
+        self.assertEqual(state_response.status_code, status.HTTP_200_OK)
+        stages = {stage["key"]: stage for stage in state_response.data["available_stages"]}
+        for stage_key in (
+            "food_distribution",
+            "goods_distribution",
+            "energy_distribution",
+            "energy_production",
+            "energy_investment",
+            "industry_investment",
+            "agriculture_investment",
+            "loan",
+            "debt_payment",
+            "import_distribution",
+        ):
+            with self.subTest(stage=stage_key):
+                self.assertTrue(stages[stage_key]["available"])
+        self.assertEqual(state_response.data["parameters"]["P9"]["status"], "next_to_fill")
+        self.assertEqual(state_response.data["parameters"]["P10"]["status"], "next_to_fill")
+        self.assertEqual(state_response.data["parameters"]["P11"]["status"], "next_to_fill")
+        self.assertEqual(state_response.data["parameters"]["E21"]["status"], "next_to_fill")
+        self.assertEqual(state_response.data["parameters"]["TF13"]["status"], "next_to_fill")
+        self.assertEqual(state_response.data["validation_state"]["errors"], [])
+        self.assertEqual(state_response.data["validation_state"]["incomplete"], [])
+
     def test_batch_ignores_unchanged_already_filled_parameters(self):
         game = self._create_game(
             difficulty=GameDifficulty.STANDARD,
@@ -378,7 +984,7 @@ class GameApiTests(APITestCase):
 
         first_response = self.client.post(
             f"/api/games/{game.id}/parameters/batch/",
-            {"parameters": {"P9": 3300}, "minister": "population"},
+            {"parameters": {"P9": 3300, "P10": 0}, "minister": "population"},
             format="json",
         )
         self.assertEqual(first_response.status_code, status.HTTP_200_OK)
@@ -407,7 +1013,7 @@ class GameApiTests(APITestCase):
 
         first_response = self.client.post(
             f"/api/games/{game.id}/parameters/batch/",
-            {"parameters": {"P9": 3300}, "minister": "population"},
+            {"parameters": {"P9": 3300, "P10": 0}, "minister": "population"},
             format="json",
         )
         self.assertEqual(first_response.status_code, status.HTTP_200_OK)
@@ -432,7 +1038,7 @@ class GameApiTests(APITestCase):
         )
         period = game.periods.get(period_number=1)
         self.assertEqual(period.P9, 3200)
-        self.assertEqual(period.P10, 100)
+        self.assertEqual(period.P10, 0)
 
     def test_next_period_repairs_existing_negative_f15_before_using_history(self):
         game = self._create_game(
@@ -619,7 +1225,7 @@ class GameApiTests(APITestCase):
             ("F14", 100),
             ("E27", 100),
             ("G19", 100),
-            ("F15", 600),
+            ("F15", 500),
             ("TF10", 0),
             ("TF11", 200),
             ("TF12", 2300),
@@ -672,7 +1278,7 @@ class GameApiTests(APITestCase):
         self.assertIn("validation_state", response.data)
         self.assertIn("population", response.data["validation_state"]["by_minister"])
         self.assertIn(
-            "P11",
+            "P10",
             response.data["validation_state"]["by_minister"]["population"]["incomplete"],
         )
         self.assertGreater(len(response.data["validation_state"]["incomplete"]), 0)
@@ -757,7 +1363,7 @@ class GameApiTests(APITestCase):
         period.refresh_from_db()
         self.assertEqual(period.TF9, 100)
 
-    def test_decision_structure_hides_operator_controlled_params_from_players(self):
+    def test_decision_structure_exposes_foreign_aid_as_summary_info_and_trade_context(self):
         response = self.client.get("/api/games/decision-structure/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -776,10 +1382,19 @@ class GameApiTests(APITestCase):
             decision["key"]
             for decision in response.data["ministers"]["trade_finance"]["decisions"]
         }
+        group_numbers = {group["number"] for group in response.data["summary_groups"]}
 
         self.assertNotIn("TF9", summary_inputs)
         self.assertNotIn("TF9", trade_finance_inputs)
         self.assertNotIn("currency_revenue", trade_finance_decision_keys)
+        self.assertNotIn(6, group_numbers)
+        self.assertEqual(response.data["summary_info"], ["TF9"])
+        self.assertIn("TF9", response.data["ministers"]["trade_finance"]["info_first"])
+        self.assertIn("TF9", response.data["parameters"])
+        self.assertNotIn("summary_situation", response.data)
+        self.assertNotIn("TF10", response.data["summary_info"])
+        self.assertNotIn("TF11", response.data["summary_info"])
+        self.assertNotIn("TF12", response.data["summary_info"])
 
     def test_batch_is_atomic_when_dependent_value_is_invalid(self):
         game = self._create_game()
@@ -820,6 +1435,164 @@ class GameModelFallbackTests(TestCase):
 
         self.assertEqual(period.P5, 20)
         self.assertEqual(period.F7, 0.6)
+
+
+class DocumentApiTests(APITestCase):
+    """Covers player document upload, listing, download, and validation."""
+
+    def setUp(self):
+        self.media_tmp = tempfile.TemporaryDirectory()
+        self.settings_override = override_settings(MEDIA_ROOT=self.media_tmp.name)
+        self.settings_override.enable()
+
+        session = self.client.session
+        session["is_admin"] = True
+        session.save()
+
+    def tearDown(self):
+        self.settings_override.disable()
+        self.media_tmp.cleanup()
+
+    def test_admin_uploads_document_and_players_download_it_as_attachment(self):
+        upload = SimpleUploadedFile(
+            "energy-guide.pdf",
+            b"%PDF-1.4 test guide",
+            content_type="application/pdf",
+        )
+
+        response = self.client.post(
+            "/api/documents/",
+            {
+                "file": upload,
+                "title": "Памятка энергетика",
+                "scope": "minister",
+                "minister": "energy",
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("download_url", response.data)
+        self.assertEqual(response.data["filename"], "energy-guide.pdf")
+
+        doc = Document.objects.get()
+        list_response = self.client.get("/api/documents/")
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            list_response.data["documents"][0]["download_url"],
+            f"http://testserver/api/documents/{doc.id}/download/",
+        )
+
+        download_response = self.client.get(f"/api/documents/{doc.id}/download/")
+
+        self.assertEqual(download_response.status_code, status.HTTP_200_OK)
+        self.assertIn(
+            'attachment; filename="energy-guide.pdf"',
+            download_response.headers["Content-Disposition"],
+        )
+        self.assertEqual(
+            b"".join(download_response.streaming_content),
+            b"%PDF-1.4 test guide",
+        )
+
+    def test_player_documents_include_builtin_slots_when_requested(self):
+        response = self.client.get("/api/documents/?include_builtin=1")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        slots = {doc["slot"]: doc for doc in response.data["documents"]}
+        self.assertIn("glossary", slots)
+        self.assertIn("common_mistakes", slots)
+        self.assertIn("minister_population", slots)
+        self.assertTrue(slots["glossary"]["is_builtin"])
+        self.assertEqual(slots["glossary"]["scope"], "general")
+        self.assertEqual(slots["minister_population"]["minister"], "population")
+        self.assertTrue(slots["glossary"]["url"].endswith(".pdf"))
+
+    def test_admin_can_replace_builtin_document_slot_with_uploaded_pdf(self):
+        upload = SimpleUploadedFile(
+            "new-glossary.pdf",
+            b"%PDF-1.4 replacement",
+            content_type="application/pdf",
+        )
+
+        response = self.client.post(
+            "/api/documents/",
+            {
+                "file": upload,
+                "slot": "glossary",
+                "title": "Словарь терминов",
+                "scope": "general",
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["slot"], "glossary")
+        self.assertTrue(response.data["is_builtin"])
+
+        list_response = self.client.get("/api/documents/?include_builtin=1")
+        glossary = next(
+            doc for doc in list_response.data["documents"] if doc["slot"] == "glossary"
+        )
+
+        self.assertEqual(glossary["filename"], "new-glossary.pdf")
+        self.assertFalse(glossary["uses_default_file"])
+
+    def test_document_upload_accepts_only_pdf_files(self):
+        upload = SimpleUploadedFile(
+            "guide.docx",
+            b"not a pdf",
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+
+        response = self.client.post(
+            "/api/documents/",
+            {
+                "file": upload,
+                "title": "Памятка",
+                "scope": "general",
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("PDF", response.data["error"])
+
+    def test_minister_document_upload_requires_known_minister(self):
+        upload = SimpleUploadedFile(
+            "guide.pdf",
+            b"guide",
+            content_type="application/pdf",
+        )
+
+        response = self.client.post(
+            "/api/documents/",
+            {"file": upload, "title": "Памятка", "scope": "minister"},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("minister", response.data["error"])
+
+        upload = SimpleUploadedFile(
+            "guide.pdf",
+            b"guide",
+            content_type="application/pdf",
+        )
+        response = self.client.post(
+            "/api/documents/",
+            {
+                "file": upload,
+                "title": "Памятка",
+                "scope": "minister",
+                "minister": "unknown",
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("minister", response.data["error"])
 
 
 class GameCalculatorExcelAlignmentTests(TestCase):
@@ -1221,6 +1994,8 @@ class FrontendAssetTests(TestCase):
     def test_shared_api_helper_reports_specific_error_messages(self):
         app_js = self.read_text("frontend/static/js/app.js")
         base_html = self.read_text("frontend/templates/base.html")
+        admin_login_template = self.read_text("frontend/templates/admin/login.html")
+        admin_login_js = self.read_text("frontend/static/js/pages/admin-login.js")
 
         for expected_token in (
             "extractErrorMessage",
@@ -1239,6 +2014,241 @@ class FrontendAssetTests(TestCase):
         for expected_token in ("Показать все", "detailModal", "Ошибки в решениях"):
             with self.subTest(token=expected_token):
                 self.assertIn(expected_token, base_html + app_js)
+
+        self.assertIn("M15 12a3 3", admin_login_template)
+        self.assertIn("showPassword ? 'Скрыть пароль' : 'Показать пароль'", admin_login_template)
+        self.assertNotIn("admin/check", admin_login_js)
+
+    def test_team_select_option_label_is_single_text_binding(self):
+        index_template = self.read_text("frontend/templates/index.html")
+        team_selection_js = self.read_text("frontend/static/js/pages/team-selection.js")
+
+        self.assertIn('x-text="teamOptionLabel(team)"', index_template)
+        self.assertNotIn('<span x-show="team.has_active_game"> (есть игра)</span>', index_template)
+        self.assertIn("teamOptionLabel(team)", team_selection_js)
+        self.assertIn('team.has_active_game ? `${team.name} (есть игра)` : team.name', team_selection_js)
+        self.assertIn('API.get("/teams/?public=1")', team_selection_js)
+        self.assertIn(":type=\"showTeamPassword ? 'text' : 'password'\"", index_template)
+        self.assertIn("absolute inset-y-0 right-0", index_template)
+        self.assertNotIn("w-11 flex-shrink-0", index_template)
+        self.assertIn("M15 12a3 3", index_template)
+        self.assertIn("showTeamPassword ? 'Скрыть пароль' : 'Показать пароль'", index_template)
+        self.assertIn("showTeamPassword", team_selection_js)
+        self.assertIn("teamStatusMessage()", team_selection_js)
+        self.assertIn("Команда завершила игру", team_selection_js)
+        self.assertNotIn("Информация о команде", index_template)
+        self.assertIn('autocomplete="current-password"', index_template)
+
+    def test_admin_country_status_link_is_available_for_active_games(self):
+        admin_panel = self.read_text("frontend/templates/admin/panel.html")
+
+        country_status_link = admin_panel[
+            admin_panel.index("<!-- Состояние страны -->"):
+            admin_panel.index('title="Состояние страны"') + len('title="Состояние страны"')
+        ]
+        self.assertIn('x-show="game.status !== \'created\'"', country_status_link)
+        self.assertNotIn('x-show="game.status === \'finished\'"', country_status_link)
+
+    def test_summary_sheet_does_not_submit_locked_decisions(self):
+        game_play_js = self.read_text("frontend/static/js/pages/game-play.js")
+        minister_js = self.read_text("frontend/static/js/pages/minister.js")
+        play_template = self.read_text("frontend/templates/game/play.html")
+        minister_template = self.read_text("frontend/templates/game/minister.html")
+
+        for expected_token in (
+            "isSummaryFixed(param)",
+            "is_fixed === true",
+            "getParamStatus(param) === 'filled'",
+            "getParamStatus(param) === 'next_to_fill'",
+            "this.isSummaryInputEnabled(param)",
+        ):
+            with self.subTest(token=expected_token):
+                self.assertIn(expected_token, game_play_js)
+        self.assertIn("is_fixed === true", minister_js)
+        self.assertNotIn("bounds.min === bounds.max", game_play_js)
+        self.assertNotIn("bounds.min === bounds.max", minister_js)
+        self.assertNotIn("b.min === b.max", game_play_js)
+        self.assertIn("game-play.js' %}?v=input-locks-20260617", play_template)
+        self.assertIn("minister.js' %}?v=input-locks-20260617", minister_template)
+
+    def test_summary_sheet_renders_foreign_aid_as_summary_info(self):
+        play_template = self.read_text("frontend/templates/game/play.html")
+        game_play_js = self.read_text("frontend/static/js/pages/game-play.js")
+
+        self.assertIn("SUMMARY_INFO", game_play_js)
+        self.assertIn("summary-info", play_template)
+        self.assertIn("Информация к сведению", play_template)
+        self.assertIn("visibleSummaryInfo()", game_play_js)
+        self.assertIn('x-show="visibleSummaryInfo().length > 0"', play_template)
+        self.assertIn("x-for=\"param in visibleSummaryInfo()\"", play_template)
+        self.assertNotIn('x-show="SUMMARY_INFO.length > 0"', play_template)
+        self.assertNotIn("SUMMARY_SITUATION", game_play_js)
+        self.assertNotIn("Ситуация периода", play_template)
+        self.assertNotIn("group.readonly || []", play_template)
+
+    def test_batch_http_errors_preserve_field_highlighting(self):
+        app_js = self.read_text("frontend/static/js/app.js")
+        game_play_js = self.read_text("frontend/static/js/pages/game-play.js")
+        minister_js = self.read_text("frontend/static/js/pages/minister.js")
+
+        expected_tokens = {
+            "frontend/static/js/app.js": "error.apiErrorPayload = payload",
+            "frontend/static/js/pages/game-play.js": "e.apiErrorPayload?.errors",
+            "frontend/static/js/pages/minister.js": "e.apiErrorPayload?.errors",
+        }
+        sources = {
+            "frontend/static/js/app.js": app_js,
+            "frontend/static/js/pages/game-play.js": game_play_js,
+            "frontend/static/js/pages/minister.js": minister_js,
+        }
+
+        for path, expected_token in expected_tokens.items():
+            with self.subTest(path=path):
+                self.assertIn(expected_token, sources[path])
+
+    def test_minister_validation_banner_uses_error_color_and_plain_labels(self):
+        minister_template = self.read_text("frontend/templates/game/minister.html")
+
+        for expected_token in (
+            "myErrorCount > 0 ? 'bg-red-50 border-red-200' : 'bg-yellow-50 border-yellow-200'",
+            "Ошибка в решениях",
+            "Не заполнено",
+        ):
+            with self.subTest(token=expected_token):
+                self.assertIn(expected_token, minister_template)
+
+        self.assertNotIn("Красным: ошибка в расчётах", minister_template)
+        self.assertNotIn("Жёлтым: не заполнено", minister_template)
+
+    def test_admin_panel_document_workflow_is_wired(self):
+        admin_js = self.read_text("frontend/static/js/pages/admin-panel.js")
+        admin_template = self.read_text("frontend/templates/admin/panel.html")
+        base_template = self.read_text("frontend/templates/base.html")
+
+        for expected_token in (
+            "documents: []",
+            "showUploadDocModal",
+            "loadDocuments()",
+            "openUploadDocModal()",
+            "onDocFileChange(event)",
+            "uploadDocument()",
+            "deleteDocument(doc)",
+            "FormData",
+            "download_url",
+        ):
+            with self.subTest(token=expected_token):
+                self.assertIn(expected_token, admin_js + admin_template)
+
+        self.assertNotIn("стартовый файл", admin_js + admin_template)
+        self.assertNotIn("Заменить стартовый файл", admin_js + admin_template)
+        self.assertIn("showTeamPasswordModal", admin_js + admin_template)
+        self.assertIn("openTeamPasswordModal(team)", admin_js + admin_template)
+        self.assertIn("teamPasswordModalValue", admin_js + admin_template)
+        self.assertIn("canSaveTeamPassword()", admin_js + admin_template)
+        self.assertNotIn("show_access_password", admin_js + admin_template)
+        self.assertNotIn("x-model=\"team.access_password\"", admin_template)
+        self.assertIn("showCreateTeamPassword", admin_js + admin_template)
+        self.assertIn("Создать пароль", admin_template)
+        self.assertIn('type="text"', admin_template)
+        self.assertIn("access_password: \"\"", admin_js)
+        self.assertIn("logoutAdmin", admin_template)
+        self.assertIn('href="/api/docs/"', admin_template)
+        self.assertNotIn("API Docs", base_template)
+        self.assertIn('x-init="initialize()"', admin_template)
+        self.assertIn("async initialize()", admin_js)
+        self.assertNotIn("async init()", admin_js)
+        self.assertIn('x-show="game.status !== \'finished\'"', admin_template)
+        self.assertIn('x-show="game.status === \'finished\'"', admin_template)
+
+        delete_entity_start = admin_js.index("async deleteEntity()")
+        delete_entity_body = admin_js[delete_entity_start : admin_js.index("openUploadDocModal", delete_entity_start)]
+        self.assertIn("this.loadGames()", delete_entity_body)
+
+    def test_docs_screen_uses_role_default_and_minister_charts(self):
+        docs_js = self.read_text("frontend/static/js/pages/docs.js")
+        docs_template = self.read_text("frontend/templates/game/docs.html")
+
+        for expected_token in (
+            "API.get('/games/decision-structure/')",
+            "this.activeDoc = this.defaultActiveDoc()",
+            "if (!this.ministerKey) return null",
+            "return this.ministerDocs[0] || null",
+            "this.ministerConfig?.interpolation_keys",
+            "getPdfJs()",
+            "pdfjs.getDocument",
+            "pdf.worker.min.mjs",
+            "renderPdfPage(pdf, pageNumber, container, token)",
+            "changePdfZoom(delta)",
+        ):
+            with self.subTest(token=expected_token):
+                self.assertIn(expected_token, docs_js)
+
+        for expected_token in (
+            "Описание роли",
+            "Описание ролей министров",
+            "Словарь терминов и основные ошибки",
+            "Выберите документ в списке",
+            "M7 3h7l5 5v13H7z",
+            "x-ref=\"pdfViewer\"",
+            "height: max(720px, calc(100vh - 220px));",
+            "changePdfZoom(-0.1)",
+            "resetPdfZoom()",
+        ):
+            with self.subTest(token=expected_token):
+                self.assertIn(expected_token, docs_template)
+
+        self.assertNotIn('target="_blank"', docs_template)
+        self.assertNotIn("<iframe", docs_template)
+        self.assertNotIn("pdfPreviewUrl", docs_js + docs_template)
+        self.assertNotIn("toolbar=0", docs_js + docs_template)
+        self.assertNotIn("bg-gray-100 flex items-center justify-center", docs_template)
+        self.assertNotIn("min-height: 900px", docs_template)
+        self.assertNotIn("generalDocsOpen", docs_js + docs_template)
+        self.assertNotIn("Общий документ", docs_template)
+        self.assertNotIn("Описание роли ·", docs_template)
+        self.assertNotIn("doc.filename", docs_template)
+
+    def test_results_screen_omits_available_energy_balance(self):
+        results_js = self.read_text("frontend/static/js/pages/results.js")
+        results_template = self.read_text("frontend/templates/game/results.html")
+
+        forbidden_tokens = (
+            "Доступный энергобаланс",
+            "Главная оценка использует доступные энергоресурсы",
+            "Энергобаланс",
+            "energyAvailabilityBalance",
+            "energyCoverage",
+            "energyBreakdown",
+        )
+        for forbidden_token in forbidden_tokens:
+            with self.subTest(token=forbidden_token):
+                self.assertNotIn(forbidden_token, results_js + results_template)
+
+    def test_results_screen_shows_summary_score_chart_above_country_metrics(self):
+        results_js = self.read_text("frontend/static/js/pages/results.js")
+        results_template = self.read_text("frontend/templates/game/results.html")
+
+        for expected_token in (
+            "get scoreIndicator()",
+            "scoreValue(period)",
+            "renderScoreChart()",
+        ):
+            with self.subTest(token=expected_token):
+                self.assertIn(expected_token, results_js)
+
+        for expected_token in (
+            "Сводный счёт",
+            "P6 + 4·P4",
+            "chart-score",
+        ):
+            with self.subTest(token=expected_token):
+                self.assertIn(expected_token, results_template)
+
+        score_chart_position = results_template.find("chart-score")
+        key_metrics_position = results_template.find("<!-- Key Metrics Summary -->")
+        self.assertGreaterEqual(score_chart_position, 0)
+        self.assertGreaterEqual(key_metrics_position, 0)
+        self.assertLess(score_chart_position, key_metrics_position)
 
     def test_templates_use_local_frontend_assets(self):
         response = self.client.get("/")

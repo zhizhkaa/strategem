@@ -113,6 +113,48 @@
         return [];
     }
 
+    function uniqueValues(values) {
+        const seen = new Set();
+        const result = [];
+        for (const value of values) {
+            if (seen.has(value)) continue;
+            seen.add(value);
+            result.push(value);
+        }
+        return result;
+    }
+
+    function flattenFieldErrors(errors) {
+        if (!errors || typeof errors !== "object" || Array.isArray(errors)) {
+            return flattenErrorValues(errors);
+        }
+
+        const groupedByMessage = new Map();
+        const directMessages = [];
+
+        for (const [field, fieldValue] of Object.entries(errors)) {
+            const messages = uniqueValues(flattenErrorValues(fieldValue));
+            if (!messages.length) continue;
+            if (field === "non_field_errors" || field === "detail") {
+                directMessages.push(...messages);
+                continue;
+            }
+            for (const message of messages) {
+                if (!groupedByMessage.has(message)) {
+                    groupedByMessage.set(message, []);
+                }
+                groupedByMessage.get(message).push(field);
+            }
+        }
+
+        const fieldMessages = [];
+        for (const [message, fields] of groupedByMessage.entries()) {
+            fieldMessages.push(fields.length > 1 ? message : `${fields[0]}: ${message}`);
+        }
+
+        return uniqueValues([...directMessages, ...fieldMessages]);
+    }
+
     function pluralizeErrorCount(count) {
         const mod10 = count % 10;
         const mod100 = count % 100;
@@ -129,13 +171,13 @@
         }
 
         if (values.length <= MAX_INLINE_ERRORS) {
-            return { message: values.join("; "), details: [] };
+            return { message: values.join("\n"), details: [] };
         }
 
         const hiddenCount = values.length - MAX_INLINE_ERRORS;
         const suffix = `ещё ${hiddenCount} ${pluralizeErrorCount(hiddenCount)}`;
         return {
-            message: `${values.slice(0, MAX_INLINE_ERRORS).join("; ")}; ${suffix}`,
+            message: `${values.slice(0, MAX_INLINE_ERRORS).join("\n")}\n${suffix}`,
             details: values,
         };
     }
@@ -155,7 +197,7 @@
         if (directValues.length) return summarizeErrorValues(directValues, fallback);
 
         if (payload.errors) {
-            const errorValues = flattenErrorValues(payload.errors);
+            const errorValues = flattenFieldErrors(payload.errors);
             if (errorValues.length) return summarizeErrorValues(errorValues, fallback);
         }
 
@@ -188,6 +230,7 @@
         const error = new Error(
             message === defaultMessage ? statusPrefix + message : message,
         );
+        error.apiErrorPayload = payload;
         error.apiErrorDetails = formatted.details;
         error.apiErrorDetailsTitle = "Ошибки в решениях";
         return error;
@@ -238,6 +281,9 @@
         },
         post(endpoint, data = {}) {
             return apiRequest("POST", endpoint, data);
+        },
+        patch(endpoint, data = {}) {
+            return apiRequest("PATCH", endpoint, data);
         },
         delete(endpoint) {
             return apiRequest("DELETE", endpoint);

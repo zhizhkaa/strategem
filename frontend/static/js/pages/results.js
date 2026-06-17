@@ -6,6 +6,7 @@ function gameResults() {
             loading: true,
             error: null,
             totalPeriods: 10,
+            initialized: false,
 
             // Data
             finalState: {},
@@ -14,10 +15,6 @@ function gameResults() {
             chartsData: null,
 
             // Computed
-            get energyBalance() {
-                return (this.finalState.E17 || 0) - (this.finalState.E15 || 0);
-            },
-
             get changes() {
                 return {
                     population: this.calculateChange("P1"),
@@ -26,150 +23,28 @@ function gameResults() {
                 };
             },
 
-            get overallStatus() {
-                const p4 = this.finalState.P4 || 0;
-                const p6 = this.finalState.P6 || 0;
-                const f7 = this.finalState.F7 || 0;
-                const energy = this.energyBalance;
+            get scoreIndicator() {
+                const series = this.periodsData
+                    .map((period) => ({
+                        period: period.period,
+                        value: this.scoreValue(period),
+                    }))
+                    .filter((point) => Number.isFinite(point.value));
 
-                let score = 0;
-                if (p4 >= 2) score++;
-                if (p6 >= 2) score++;
-                if (f7 >= 0.6) score++;
-                if (energy >= 0) score++;
-                if (this.finalState.TF1 <= 1000) score++;
-                if (this.finalState.P1 >= this.initialState.P1) score++;
+                if (!series.length) return null;
 
-                if (score >= 5)
-                    return {
-                        label: "🏆 Процветание",
-                        class: "bg-green-100 text-green-800",
-                    };
-                if (score >= 3)
-                    return {
-                        label: "📊 Стабильность",
-                        class: "bg-yellow-100 text-yellow-800",
-                    };
-                if (score >= 1)
-                    return {
-                        label: "⚠️ Кризис",
-                        class: "bg-orange-100 text-orange-800",
-                    };
-                return {
-                    label: "💀 Катастрофа",
-                    class: "bg-red-100 text-red-800",
-                };
-            },
-
-            get assessments() {
-                const p1Change = this.changes.population;
-                const p4 = this.finalState.P4 || 0;
-                const p6 = this.finalState.P6 || 0;
-                const energy = this.energyBalance;
-                const f7 = this.finalState.F7 || 0;
-                const debt = this.finalState.TF1 || 0;
+                const current =
+                    series.reduce((sum, point) => sum + point.value, 0) /
+                    series.length;
 
                 return {
-                    population:
-                        p1Change >= 0
-                            ? {
-                                  class: "bg-green-50 border-green-200",
-                                  text: `Население выросло на ${p1Change.toFixed(0)}%`,
-                              }
-                            : {
-                                  class: "bg-red-50 border-red-200",
-                                  text: `Население сократилось на ${Math.abs(p1Change).toFixed(0)}%`,
-                              },
-                    food:
-                        p4 >= 2.5
-                            ? {
-                                  class: "bg-green-50 border-green-200",
-                                  text: "Изобилие продовольствия",
-                              }
-                            : p4 >= 2.0
-                              ? {
-                                    class: "bg-green-50 border-green-200",
-                                    text: "Достаточное обеспечение продовольствием",
-                                }
-                              : p4 >= 1.5
-                                ? {
-                                      class: "bg-yellow-50 border-yellow-200",
-                                      text: "Продовольственный дефицит",
-                                  }
-                                : {
-                                      class: "bg-red-50 border-red-200",
-                                      text: "Голод в стране",
-                                  },
-                    goods:
-                        p6 >= 2.0
-                            ? {
-                                  class: "bg-green-50 border-green-200",
-                                  text: "Достаточное обеспечение товарами",
-                              }
-                            : p6 >= 1.0
-                              ? {
-                                    class: "bg-yellow-50 border-yellow-200",
-                                    text: "Дефицит товаров",
-                                }
-                              : {
-                                    class: "bg-red-50 border-red-200",
-                                    text: "Острая нехватка товаров",
-                                },
-                    energy:
-                        energy >= 500
-                            ? {
-                                  class: "bg-green-50 border-green-200",
-                                  text: "Энергетическая безопасность обеспечена",
-                              }
-                            : energy >= 0
-                              ? {
-                                    class: "bg-green-50 border-green-200",
-                                    text: "Энергобаланс положительный",
-                                }
-                              : {
-                                    class: "bg-red-50 border-red-200",
-                                    text: "Дефицит энергии",
-                                },
-                    environment:
-                        f7 >= 0.8
-                            ? {
-                                  class: "bg-green-50 border-green-200",
-                                  text: "Отличное состояние экологии",
-                              }
-                            : f7 >= 0.6
-                              ? {
-                                    class: "bg-green-50 border-green-200",
-                                    text: "Экология в норме",
-                                }
-                              : f7 >= 0.4
-                                ? {
-                                      class: "bg-yellow-50 border-yellow-200",
-                                      text: "Экология ухудшается",
-                                  }
-                                : {
-                                      class: "bg-red-50 border-red-200",
-                                      text: "Экологическая катастрофа",
-                                  },
-                    finance:
-                        debt <= 500
-                            ? {
-                                  class: "bg-green-50 border-green-200",
-                                  text: "Минимальный внешний долг",
-                              }
-                            : debt <= 1500
-                              ? {
-                                    class: "bg-green-50 border-green-200",
-                                    text: "Долг под контролем",
-                                }
-                              : debt <= 3000
-                                ? {
-                                      class: "bg-yellow-50 border-yellow-200",
-                                      text: "Значительный внешний долг",
-                                  }
-                                : {
-                                      class: "bg-red-50 border-red-200",
-                                      text: "Критический уровень долга",
-                                  },
+                    label: "Сводный счёт",
+                    formula: "P6 + 4·P4",
+                    note: "Среднее за все завершённые периоды",
+                    color: "#6366f1",
+                    series,
+                    current,
+                    currentFormatted: this.formatScoreValue(current),
                 };
             },
 
@@ -178,6 +53,9 @@ function gameResults() {
 
             // Methods
             async init() {
+                if (this.initialized) return;
+                this.initialized = true;
+
                 this.gameId = localStorage.getItem("strategem_game");
                 this.teamName =
                     localStorage.getItem("strategem_team_name") || "Команда";
@@ -219,6 +97,7 @@ function gameResults() {
                         P5: p.P5,
                         P6: p.P6,
                         P8: p.P8,
+                        E7: p.E7,
                         E15: p.E15,
                         E17: p.E17,
                         F7: p.F7,
@@ -251,9 +130,26 @@ function gameResults() {
                 return ((final - initial) / initial) * 100;
             },
 
+            scoreValue(period) {
+                const food = Number(period?.P4);
+                const goods = Number(period?.P6);
+                if (!Number.isFinite(food) || !Number.isFinite(goods)) {
+                    return null;
+                }
+                return goods + 4 * food;
+            },
+
             formatNumber(value) {
                 if (value === undefined || value === null) return "-";
                 return new Intl.NumberFormat("ru-RU").format(Math.round(value));
+            },
+
+            formatScoreValue(value) {
+                if (value === undefined || value === null) return "—";
+                return new Intl.NumberFormat("ru-RU", {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 2,
+                }).format(value);
             },
 
             formatChange(value) {
@@ -269,11 +165,35 @@ function gameResults() {
             },
 
             renderAllCharts() {
-                this.renderPopulationChart();
+                this.renderScoreChart();
+                this.renderPopulationCountChart();
+                this.renderPerCapitaChart();
+                this.renderDemographicsChart();
+                this.renderEnergyTotalChart();
+                this.renderEnergyProductionChart();
                 this.renderEconomyChart();
-                this.renderEnergyChart();
-                this.renderFinanceChart();
                 this.renderEnvironmentChart();
+                this.renderDebtChart();
+                this.renderImportChart();
+                this.renderExportChart();
+            },
+
+            destroyChart(key, ctx) {
+                if (this.charts[key]) {
+                    this.charts[key].destroy();
+                    delete this.charts[key];
+                }
+                const existingChart = Chart.getChart?.(ctx);
+                if (existingChart) {
+                    existingChart.destroy();
+                }
+            },
+
+            formatChartValue(value) {
+                return new Intl.NumberFormat("ru-RU", {
+                    notation: "compact",
+                    maximumFractionDigits: 1,
+                }).format(value);
             },
 
             createDatasets(data, colors) {
@@ -296,7 +216,13 @@ function gameResults() {
                 }));
             },
 
-            getChartOptions(title) {
+            pickDatasets(group, parameters) {
+                const wanted = new Set(parameters);
+                return (group || []).filter((item) => wanted.has(item.parameter));
+            },
+
+            getChartOptions({ yLabel = "Значение" } = {}) {
+                const formatter = this.formatChartValue;
                 return {
                     responsive: true,
                     maintainAspectRatio: false,
@@ -311,13 +237,7 @@ function gameResults() {
                             padding: 10,
                             callbacks: {
                                 label: function (context) {
-                                    let value = context.parsed.y;
-                                    if (value !== null) {
-                                        value = new Intl.NumberFormat(
-                                            "ru-RU",
-                                        ).format(value);
-                                    }
-                                    return `${context.dataset.label}: ${value}`;
+                                    return `${context.dataset.label}: ${formatter(context.parsed.y)}`;
                                 },
                             },
                         },
@@ -329,13 +249,10 @@ function gameResults() {
                             ticks: { stepSize: 1 },
                         },
                         y: {
-                            title: { display: true, text: "Значение" },
+                            title: { display: true, text: yLabel },
                             ticks: {
                                 callback: function (value) {
-                                    return new Intl.NumberFormat("ru-RU", {
-                                        notation: "compact",
-                                        maximumFractionDigits: 1,
-                                    }).format(value);
+                                    return formatter(value);
                                 },
                             },
                         },
@@ -343,89 +260,188 @@ function gameResults() {
                 };
             },
 
-            renderPopulationChart() {
-                const ctx = document.getElementById("populationChart");
-                if (!ctx || !this.chartsData?.population) return;
+            renderChart(key, canvasId, data, colors, options = {}) {
+                const ctx = document.getElementById(canvasId);
+                if (!ctx || !data?.length) return;
+                this.destroyChart(key, ctx);
 
-                const datasets = this.createDatasets(
-                    this.chartsData.population,
-                    ["#3b82f6", "#60a5fa", "#93c5fd"],
-                );
-
-                this.charts.population = new Chart(ctx, {
+                this.charts[key] = new Chart(ctx, {
                     type: "line",
-                    data: { datasets },
-                    options: this.getChartOptions(),
+                    data: { datasets: this.createDatasets(data, colors) },
+                    options: this.getChartOptions(options),
                 });
+            },
+
+            renderScoreChart() {
+                const indicator = this.scoreIndicator;
+                const ctx = document.getElementById("chart-score");
+                if (!ctx || !indicator?.series.length) return;
+                this.destroyChart("score", ctx);
+
+                this.charts.score = new Chart(ctx, {
+                    type: "line",
+                    data: {
+                        datasets: [
+                            {
+                                data: indicator.series.map((point) => ({
+                                    x: point.period,
+                                    y: point.value,
+                                })),
+                                borderColor: indicator.color,
+                                backgroundColor: indicator.color + "15",
+                                borderWidth: 2,
+                                tension: 0.3,
+                                fill: true,
+                                pointRadius:
+                                    indicator.series.length <= 12 ? 3 : 2,
+                                pointHoverRadius: 5,
+                            },
+                        ],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: false,
+                        interaction: { intersect: false, mode: "index" },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: (context) =>
+                                        this.formatScoreValue(context.parsed.y),
+                                },
+                            },
+                        },
+                        scales: {
+                            x: {
+                                type: "linear",
+                                min: 1,
+                                max: this.totalPeriods,
+                                ticks: { stepSize: 1, font: { size: 10 } },
+                                grid: { color: "#f3f4f6" },
+                            },
+                            y: {
+                                ticks: {
+                                    maxTicksLimit: 4,
+                                    font: { size: 10 },
+                                    callback: (value) =>
+                                        this.formatChartValue(value),
+                                },
+                                grid: { color: "#f3f4f6" },
+                            },
+                        },
+                    },
+                });
+            },
+
+            renderPopulationCountChart() {
+                const ctx = document.getElementById("populationCountChart");
+                if (!ctx || !this.chartsData?.population) return;
+                this.renderChart(
+                    "populationCount",
+                    "populationCountChart",
+                    this.pickDatasets(this.chartsData.population, ["P1"]),
+                    ["#3b82f6", "#60a5fa", "#93c5fd"],
+                    { yLabel: "Численность" },
+                );
+            },
+
+            renderPerCapitaChart() {
+                this.renderChart(
+                    "perCapita",
+                    "perCapitaChart",
+                    this.pickDatasets(this.chartsData?.population, ["P4", "P6"]),
+                    ["#0ea5e9", "#38bdf8"],
+                    { yLabel: "На душу населения" },
+                );
+            },
+
+            renderDemographicsChart() {
+                this.renderChart(
+                    "demographics",
+                    "demographicsChart",
+                    this.pickDatasets(this.chartsData?.population, ["P5", "P8"]),
+                    ["#6366f1", "#818cf8"],
+                    { yLabel: "Показатель" },
+                );
             },
 
             renderEconomyChart() {
-                const ctx = document.getElementById("economyChart");
-                if (!ctx || !this.chartsData?.economy) return;
-
-                const datasets = this.createDatasets(this.chartsData.economy, [
-                    "#22c55e",
-                    "#4ade80",
-                    "#86efac",
-                ]);
-
-                this.charts.economy = new Chart(ctx, {
-                    type: "line",
-                    data: { datasets },
-                    options: this.getChartOptions(),
-                });
+                this.renderChart(
+                    "economy",
+                    "economyChart",
+                    this.chartsData?.economy,
+                    ["#22c55e", "#4ade80", "#86efac"],
+                    { yLabel: "Производство" },
+                );
             },
 
-            renderEnergyChart() {
-                const ctx = document.getElementById("energyChart");
-                if (!ctx || !this.chartsData?.energy) return;
-
-                const datasets = this.createDatasets(this.chartsData.energy, [
-                    "#eab308",
-                    "#facc15",
-                    "#fde047",
-                ]);
-
-                this.charts.energy = new Chart(ctx, {
-                    type: "line",
-                    data: { datasets },
-                    options: this.getChartOptions(),
-                });
+            renderEnergyTotalChart() {
+                this.renderChart(
+                    "energyTotal",
+                    "energyTotalChart",
+                    this.pickDatasets(this.chartsData?.energy, ["E7"]),
+                    ["#eab308"],
+                    { yLabel: "Энергоресурсы" },
+                );
             },
 
-            renderFinanceChart() {
-                const ctx = document.getElementById("financeChart");
-                if (!ctx || !this.chartsData?.finance) return;
+            renderEnergyProductionChart() {
+                this.renderChart(
+                    "energyProduction",
+                    "energyProductionChart",
+                    this.pickDatasets(this.chartsData?.energy, ["E17", "E15"]),
+                    ["#f97316", "#fb923c"],
+                    { yLabel: "Энергоресурсы" },
+                );
+            },
 
-                const datasets = this.createDatasets(this.chartsData.finance, [
-                    "#a855f7",
-                    "#c084fc",
-                    "#d8b4fe",
-                    "#7c3aed",
-                    "#8b5cf6",
-                ]);
+            renderDebtChart() {
+                this.renderChart(
+                    "debt",
+                    "debtChart",
+                    this.pickDatasets(this.chartsData?.finance, ["TF1"]),
+                    ["#a855f7"],
+                    { yLabel: "Внешний долг" },
+                );
+            },
 
-                this.charts.finance = new Chart(ctx, {
-                    type: "line",
-                    data: { datasets },
-                    options: this.getChartOptions(),
-                });
+            renderExportChart() {
+                this.renderChart(
+                    "export",
+                    "exportChart",
+                    this.pickDatasets(this.chartsData?.finance, [
+                        "TF10",
+                        "TF11",
+                        "TF12",
+                    ]),
+                    ["#16a34a", "#22c55e", "#86efac"],
+                    { yLabel: "Экспорт" },
+                );
+            },
+
+            renderImportChart() {
+                this.renderChart(
+                    "import",
+                    "importChart",
+                    this.pickDatasets(this.chartsData?.finance, [
+                        "TF16",
+                        "TF17",
+                        "TF18",
+                    ]),
+                    ["#c026d3", "#e879f9", "#f5d0fe"],
+                    { yLabel: "Импорт" },
+                );
             },
 
             renderEnvironmentChart() {
-                const ctx = document.getElementById("environmentChart");
-                if (!ctx || !this.chartsData?.environment) return;
-
-                const datasets = this.createDatasets(
-                    this.chartsData.environment,
-                    ["#14b8a6", "#2dd4bf"],
+                this.renderChart(
+                    "environment",
+                    "environmentChart",
+                    this.pickDatasets(this.chartsData?.environment, ["F7"]),
+                    ["#14b8a6"],
+                    { yLabel: "Состояние" },
                 );
-
-                this.charts.environment = new Chart(ctx, {
-                    type: "line",
-                    data: { datasets },
-                    options: this.getChartOptions(),
-                });
             },
 
             exportResults() {

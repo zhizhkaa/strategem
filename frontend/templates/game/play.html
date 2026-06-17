@@ -138,6 +138,23 @@
         </div>
 
         <!-- Summary Table -->
+        <div id="summary-info" x-show="visibleSummaryInfo().length > 0" class="bg-white rounded-lg shadow-md p-3">
+            <p class="text-xs font-semibold text-gray-500 uppercase mb-2">Информация к сведению</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                <template x-for="param in visibleSummaryInfo()" :key="param">
+                    <div class="border border-teal-100 bg-teal-50 rounded-md px-3 py-2">
+                        <div class="flex items-baseline justify-between gap-3">
+                            <span class="text-xs text-teal-800">
+                                <span class="font-mono font-semibold" x-text="param"></span>
+                                <span x-text="PARAM_VERBOSE[param] || param"></span>
+                            </span>
+                            <span class="font-mono text-sm font-semibold text-teal-900" x-text="formatNum(getVal(param))"></span>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
         <div class="bg-white rounded-lg shadow-md overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="text-xs border-separate [border-spacing:0] min-w-full">
@@ -283,5 +300,5 @@
 </div>
 {% endblock %}
 {% block extra_scripts %}
-<script src="{% static 'js/pages/game-play.js' %}"></script>
+<script src="{% static 'js/pages/game-play.js' %}?v=input-locks-20260617"></script>
 {% endblock %}
