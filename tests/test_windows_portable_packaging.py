@@ -1,3 +1,4 @@
+import importlib.util
 from pathlib import Path
 
 
@@ -6,6 +7,16 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 
 def read_repo_file(path: str) -> str:
     return (ROOT_DIR / path).read_text(encoding="utf-8")
+
+
+def load_windows_launcher():
+    launcher_path = ROOT_DIR / "scripts/windows/strategem_launcher.py"
+    spec = importlib.util.spec_from_file_location("strategem_launcher", launcher_path)
+    assert spec is not None
+    assert spec.loader is not None
+    launcher = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(launcher)
+    return launcher
 
 
 def test_windows_build_creates_pyinstaller_exe_package() -> None:
@@ -76,3 +87,74 @@ def test_pyinstaller_launcher_sets_local_runtime_defaults() -> None:
     assert "POSTGRES_DB" in launcher
     assert "127.0.0.1" in launcher
     assert "runserver" in launcher
+
+
+def test_pyinstaller_launcher_uses_stable_windows_profile_dir(monkeypatch, tmp_path) -> None:
+    launcher = load_windows_launcher()
+    fallback_root = tmp_path / "Strategem-Windows"
+    local_app_data = tmp_path / "LocalAppData"
+
+    monkeypatch.delenv("STRATEGEM_RUNTIME_DIR", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+    monkeypatch.setattr(launcher, "is_windows", lambda: True)
+
+    assert launcher.persistent_root(fallback_root) == local_app_data / "Strategem"
+
+
+def test_pyinstaller_launcher_allows_runtime_dir_override(monkeypatch, tmp_path) -> None:
+    launcher = load_windows_launcher()
+    fallback_root = tmp_path / "Strategem-Windows"
+    configured_root = tmp_path / "strategem-runtime"
+
+    monkeypatch.setenv("STRATEGEM_RUNTIME_DIR", str(configured_root))
+
+    assert launcher.persistent_root(fallback_root) == configured_root
+
+
+def test_pyinstaller_launcher_migrates_legacy_portable_state(tmp_path) -> None:
+    launcher = load_windows_launcher()
+    old_data_dir = tmp_path / "old" / "data"
+    old_media_dir = tmp_path / "old" / "media"
+    new_data_dir = tmp_path / "profile" / "data"
+    new_media_dir = tmp_path / "profile" / "media"
+
+    old_data_dir.mkdir(parents=True)
+    old_media_dir.mkdir(parents=True)
+    new_data_dir.mkdir(parents=True)
+    new_media_dir.mkdir(parents=True)
+    (old_data_dir / "db.sqlite3").write_bytes(b"legacy database")
+    (old_media_dir / "upload.txt").write_text("legacy media", encoding="utf-8")
+
+    launcher.migrate_legacy_runtime_state(
+        old_data_dir,
+        old_media_dir,
+        new_data_dir,
+        new_media_dir,
+    )
+
+    assert (new_data_dir / "db.sqlite3").read_bytes() == b"legacy database"
+    assert (new_media_dir / "upload.txt").read_text(encoding="utf-8") == "legacy media"
+
+
+def test_pyinstaller_launcher_does_not_overwrite_existing_profile_database(tmp_path) -> None:
+    launcher = load_windows_launcher()
+    old_data_dir = tmp_path / "old" / "data"
+    old_media_dir = tmp_path / "old" / "media"
+    new_data_dir = tmp_path / "profile" / "data"
+    new_media_dir = tmp_path / "profile" / "media"
+
+    old_data_dir.mkdir(parents=True)
+    old_media_dir.mkdir(parents=True)
+    new_data_dir.mkdir(parents=True)
+    new_media_dir.mkdir(parents=True)
+    (old_data_dir / "db.sqlite3").write_bytes(b"legacy database")
+    (new_data_dir / "db.sqlite3").write_bytes(b"profile database")
+
+    launcher.migrate_legacy_runtime_state(
+        old_data_dir,
+        old_media_dir,
+        new_data_dir,
+        new_media_dir,
+    )
+
+    assert (new_data_dir / "db.sqlite3").read_bytes() == b"profile database"
