@@ -1,7 +1,9 @@
 """Regression tests for game API, formulas, models, and frontend assets."""
 
 import json
+import importlib.util
 import tempfile
+from io import BytesIO
 from pathlib import Path
 
 from apps.management.models import Faculty, Group, Team
@@ -146,6 +148,73 @@ class GameApiTests(APITestCase):
         self.assertEqual(detail_response.data["difficulty"], GameDifficulty.TOUGH)
         self.assertEqual(detail_response.data["difficulty_display"], "Tough")
 
+    def test_archived_games_are_hidden_from_default_list(self):
+        active_game = self._create_game()
+        archived_game = self._create_game()
+
+        response = self.client.post(f"/api/games/{archived_game.id}/archive/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        archived_game.refresh_from_db()
+        self.assertTrue(archived_game.is_archived)
+        self.assertIsNotNone(archived_game.archived_at)
+
+        default_response = self.client.get("/api/games/")
+        archive_response = self.client.get("/api/games/?archived=1")
+        all_response = self.client.get("/api/games/?archived=all")
+
+        self.assertEqual(
+            [game_data["id"] for game_data in default_response.data],
+            [active_game.id],
+        )
+        self.assertEqual(
+            [game_data["id"] for game_data in archive_response.data],
+            [archived_game.id],
+        )
+        self.assertCountEqual(
+            [game_data["id"] for game_data in all_response.data],
+            [active_game.id, archived_game.id],
+        )
+
+        restore_response = self.client.post(f"/api/games/{archived_game.id}/unarchive/")
+        self.assertEqual(restore_response.status_code, status.HTTP_200_OK)
+        archived_game.refresh_from_db()
+        self.assertFalse(archived_game.is_archived)
+        self.assertIsNone(archived_game.archived_at)
+
+    def test_game_excel_export_returns_workbook(self):
+        from openpyxl import load_workbook
+
+        game = self._create_game()
+
+        response = self.client.get(f"/api/games/{game.id}/export/excel/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        self.assertTrue(response.content.startswith(b"PK"))
+        workbook = load_workbook(BytesIO(response.content), read_only=True)
+        self.assertEqual(workbook.sheetnames, ["Сводные итоги", "Периоды"])
+        self.assertEqual(workbook["Периоды"]["A11"].value, "Код")
+        self.assertEqual(workbook["Периоды"]["C11"].value, "Период 1")
+        self.assertEqual(workbook["Сводные итоги"]["A11"].value, "Показатель")
+        self.assertEqual(workbook["Сводные итоги"]["B11"].value, "Период 1")
+        self.assertEqual(workbook["Сводные итоги"]["A12"].value, "Сводный счёт")
+
+    def test_game_pdf_export_returns_pdf_when_reportlab_is_installed(self):
+        if importlib.util.find_spec("reportlab") is None:
+            self.skipTest("reportlab is not installed in the current environment")
+
+        game = self._create_game()
+
+        response = self.client.get(f"/api/games/{game.id}/export/pdf/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertTrue(response.content.startswith(b"%PDF"))
+
     def test_rejects_unsupported_15_periods(self):
         team = self._create_team()
 
@@ -195,6 +264,28 @@ class GameApiTests(APITestCase):
         self.assertEqual(wrong_response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(ok_response.status_code, status.HTTP_200_OK)
         self.assertEqual(ok_response.data["game"]["team"], team.id)
+
+    def test_team_without_password_can_enter_game_without_password(self):
+        team = Team.objects.create(
+            name="Команда без пароля",
+            group=self.group,
+            access_password="",
+        )
+        Game.objects.create(
+            team=team,
+            status=GameStatus.ACTIVE,
+            difficulty=GameDifficulty.STANDARD,
+            total_periods=12,
+        )
+
+        session = self.client.session
+        session["is_admin"] = False
+        session.save()
+
+        response = self.client.post(f"/api/teams/{team.id}/game/", {}, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["game"]["team"], team.id)
 
     def test_team_list_never_returns_raw_password(self):
         team = Team.objects.create(

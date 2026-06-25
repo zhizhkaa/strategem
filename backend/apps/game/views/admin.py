@@ -225,7 +225,7 @@ class TeamGameView(APIView):
             )
 
         provided_password = str(request.data.get("password", ""))
-        if not team.check_access_password(provided_password):
+        if team.access_password and not team.check_access_password(provided_password):
             return Response(
                 {"error": "Неверный пароль команды"},
                 status=status.HTTP_403_FORBIDDEN,

@@ -7,7 +7,10 @@ decision-structure, charts, parameter-history.
 """
 
 from datetime import datetime, timezone
+from urllib.parse import quote
 
+from django.http import HttpResponse
+from django.utils import timezone as django_timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -17,6 +20,7 @@ from rest_framework.response import Response
 from ..engine import get_calculator, get_state_manager
 from ..engine.interpolation import Interpolator
 from ..engine.state_manager import DecisionState
+from ..exports import build_results_pdf, build_results_xlsx
 from ..models import PARAMETERS_CONFIG, Game, GamePeriod, GameStatus
 from ..decision_structure import build_decision_structure
 from ..serializers import (
@@ -61,6 +65,20 @@ class GameViewSet(viewsets.ModelViewSet):
     """
 
     queryset = Game.objects.select_related("team__group__faculty").all()
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.action != "list":
+            return queryset
+
+        archived = self.request.query_params.get("archived")
+        include_archived = self.request.query_params.get("include_archived")
+
+        if archived in {"1", "true", "yes"}:
+            return queryset.filter(is_archived=True)
+        if archived == "all" or include_archived in {"1", "true", "yes"}:
+            return queryset
+        return queryset.filter(is_archived=False)
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -119,6 +137,98 @@ class GameViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
         return super().destroy(request, pk)
+
+    @extend_schema(
+        summary="Архивировать игру",
+        description=(
+            "Скрывает игру из основного списка администратора. "
+            "Данные игры остаются доступны для просмотра и экспорта."
+        ),
+        responses={200: GameDetailSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="archive")
+    def archive(self, request: Request, pk=None) -> Response:
+        """Архивирует игру без изменения её игрового статуса."""
+        if not request.session.get("is_admin", False):
+            return Response(
+                {"error": "Требуются права администратора"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        game = self.get_object()
+        if not game.is_archived:
+            game.is_archived = True
+            game.archived_at = django_timezone.now()
+            game.save(update_fields=["is_archived", "archived_at", "updated_at"])
+
+        serializer = GameDetailSerializer(game)
+        return Response(serializer.data)
+
+    @extend_schema(
+        summary="Вернуть игру из архива",
+        description="Возвращает игру в основной список администратора.",
+        responses={200: GameDetailSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="unarchive")
+    def unarchive(self, request: Request, pk=None) -> Response:
+        """Возвращает игру из архива."""
+        if not request.session.get("is_admin", False):
+            return Response(
+                {"error": "Требуются права администратора"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        game = self.get_object()
+        if game.is_archived:
+            game.is_archived = False
+            game.archived_at = None
+            game.save(update_fields=["is_archived", "archived_at", "updated_at"])
+
+        serializer = GameDetailSerializer(game)
+        return Response(serializer.data)
+
+    def _export_response(
+        self,
+        content: bytes,
+        filename: str,
+        content_type: str,
+    ) -> HttpResponse:
+        response = HttpResponse(content, content_type=content_type)
+        quoted = quote(filename)
+        response["Content-Disposition"] = (
+            f"attachment; filename*=UTF-8''{quoted}"
+        )
+        return response
+
+    @extend_schema(
+        summary="Экспорт итогов игры в PDF",
+        description="Скачивает компактный PDF с итоговым экраном игры.",
+        responses={200: OpenApiResponse(description="PDF-файл")},
+    )
+    @action(detail=True, methods=["get"], url_path="export/pdf")
+    def export_pdf(self, request: Request, pk=None) -> HttpResponse:
+        game = self.get_object()
+        filename = f"strategem-game-{game.id}-results.pdf"
+        return self._export_response(
+            build_results_pdf(game),
+            filename,
+            "application/pdf",
+        )
+
+    @extend_schema(
+        summary="Экспорт итогов игры в Excel",
+        description="Скачивает XLSX с подробными данными по всем периодам.",
+        responses={200: OpenApiResponse(description="XLSX-файл")},
+    )
+    @action(detail=True, methods=["get"], url_path="export/excel")
+    def export_excel(self, request: Request, pk=None) -> HttpResponse:
+        game = self.get_object()
+        filename = f"strategem-game-{game.id}-details.xlsx"
+        return self._export_response(
+            build_results_xlsx(game),
+            filename,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
 
     @extend_schema(
         summary="Состояние игры",

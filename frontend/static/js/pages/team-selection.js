@@ -38,7 +38,10 @@ function teamSelection() {
                 return (
                     this.selectedTeam
                     && this.selectedTeamData?.has_active_game
-                    && this.teamPassword.trim().length > 0
+                    && (
+                        !this.selectedTeamData?.has_access_password
+                        || this.teamPassword.trim().length > 0
+                    )
                 );
             },
 
@@ -146,7 +149,11 @@ function teamSelection() {
                     // Check password and active game
                     const response = await API.post(
                         `/teams/${this.selectedTeam}/game/`,
-                        { password: this.teamPassword.trim() },
+                        {
+                            password: this.selectedTeamData?.has_access_password
+                                ? this.teamPassword.trim()
+                                : "",
+                        },
                     );
 
                     if (response.game) {

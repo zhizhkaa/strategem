@@ -137,6 +137,17 @@ class Game(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлено")
+    finished_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name="Дата завершения",
+    )
+    is_archived = models.BooleanField(default=False, verbose_name="В архиве")
+    archived_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name="Дата архивирования",
+    )
 
     class Meta:
         ordering = ["-created_at"]
@@ -260,6 +271,10 @@ class Game(models.Model):
 
         if self.current_period >= self.total_periods:
             self.status = GameStatus.FINISHED
+            from django.utils import timezone
+
+            if self.finished_at is None:
+                self.finished_at = timezone.now()
             self.save()
             return False
 

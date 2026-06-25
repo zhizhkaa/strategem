@@ -174,7 +174,10 @@
         <!-- Stats Cards -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <div class="bg-white rounded-lg shadow-md p-4">
-                <p class="text-sm text-gray-500">Всего игр</p>
+                <p
+                    class="text-sm text-gray-500"
+                    x-text="showArchivedGames ? 'В архиве' : 'Текущих игр'"
+                ></p>
                 <p
                     class="text-2xl font-bold text-gray-900"
                     x-text="games.length"
@@ -206,28 +209,53 @@
         <!-- Games Table -->
         <div class="bg-white rounded-lg shadow-md overflow-hidden">
             <div
-                class="px-4 py-3 border-b border-gray-200 flex items-center justify-between"
+                class="px-4 py-3 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center gap-3"
             >
-                <h2 class="font-semibold text-gray-900">Игры</h2>
-                <button
-                    @click="loadGames()"
-                    class="text-strategem-600 hover:text-strategem-700 text-sm flex items-center"
-                >
-                    <svg
-                        class="w-4 h-4 mr-1"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
+                <div class="flex-shrink-0">
+                    <h2
+                        class="font-semibold text-gray-900"
+                        x-text="showArchivedGames ? 'Архив игр' : 'Игры'"
+                    ></h2>
+                </div>
+                <div class="flex flex-1 items-center justify-between gap-2">
+                    <div class="inline-flex rounded-md border border-gray-300 overflow-hidden">
+                        <button
+                            type="button"
+                            @click="setGamesArchiveView(false)"
+                            class="px-3 py-1.5 text-sm"
+                            :class="!showArchivedGames ? 'bg-strategem-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'"
+                        >
+                            Текущие
+                        </button>
+                        <button
+                            type="button"
+                            @click="setGamesArchiveView(true)"
+                            class="px-3 py-1.5 text-sm border-l border-gray-300"
+                            :class="showArchivedGames ? 'bg-strategem-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'"
+                        >
+                            Архив
+                        </button>
+                    </div>
+                    <button
+                        @click="loadGames()"
+                        class="ml-auto text-strategem-600 hover:text-strategem-700 text-sm flex items-center px-2 py-1.5"
                     >
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                        />
-                    </svg>
-                    Обновить
-                </button>
+                        <svg
+                            class="w-4 h-4 mr-1"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                            />
+                        </svg>
+                        Обновить
+                    </button>
+                </div>
             </div>
 
             <div
@@ -247,8 +275,9 @@
                         d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
                     />
                 </svg>
-                <p>Нет созданных игр</p>
+                <p x-text="showArchivedGames ? 'Архив пуст' : 'Нет созданных игр'"></p>
                 <button
+                    x-show="!showArchivedGames"
                     @click="openCreateModal()"
                     class="mt-4 text-strategem-600 hover:underline"
                 >
@@ -337,6 +366,12 @@
                                           }"
                                         x-text="getStatusDisplay(game.status)"
                                     ></span>
+                                    <span
+                                        x-show="game.is_archived"
+                                        class="ml-1 px-2 py-1 text-xs rounded-full bg-slate-100 text-slate-700"
+                                    >
+                                        Архив
+                                    </span>
                                 </td>
                                 <td class="px-4 py-3 text-sm text-gray-600">
                                     <span
@@ -353,13 +388,13 @@
                                 ></td>
                                 <td class="px-4 py-3 text-right">
                                     <div
-                                        class="flex items-center justify-end space-x-2"
+                                        class="flex items-center justify-end gap-1.5"
                                     >
                                         <a
                                             x-show="game.status !== 'finished'"
                                             href="#"
                                             @click.prevent="viewGame(game)"
-                                            class="text-strategem-600 hover:text-strategem-700 p-1"
+                                            class="inline-flex h-8 w-8 items-center justify-center rounded-md text-strategem-600 hover:bg-strategem-50 hover:text-strategem-700"
                                             title="Просмотреть игру (только чтение)"
                                         >
                                             <svg
@@ -382,78 +417,11 @@
                                                 />
                                             </svg>
                                         </a>
-                                        <button
-                                            x-show="game.status === 'active'"
-                                            @click="openOperatorModal(game)"
-                                            class="text-purple-600 hover:text-purple-700 p-1"
-                                            title="Иностранная помощь"
-                                        >
-                                            <svg
-                                                class="w-5 h-5"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                viewBox="0 0 24 24"
-                                            >
-                                                <path
-                                                    stroke-linecap="round"
-                                                    stroke-linejoin="round"
-                                                    stroke-width="2"
-                                                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                                                />
-                                            </svg>
-                                        </button>
-                                        <!-- Pause/Resume buttons -->
-                                        <button
-                                            x-show="game.status === 'active'"
-                                            @click="pauseGame(game)"
-                                            class="text-yellow-600 hover:text-yellow-700 p-1"
-                                            title="Приостановить игру"
-                                        >
-                                            <svg
-                                                class="w-5 h-5"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                viewBox="0 0 24 24"
-                                            >
-                                                <path
-                                                    stroke-linecap="round"
-                                                    stroke-linejoin="round"
-                                                    stroke-width="2"
-                                                    d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                                                />
-                                            </svg>
-                                        </button>
-                                        <button
-                                            x-show="game.status === 'paused'"
-                                            @click="resumeGame(game)"
-                                            class="text-green-600 hover:text-green-700 p-1"
-                                            title="Возобновить игру"
-                                        >
-                                            <svg
-                                                class="w-5 h-5"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                viewBox="0 0 24 24"
-                                            >
-                                                <path
-                                                    stroke-linecap="round"
-                                                    stroke-linejoin="round"
-                                                    stroke-width="2"
-                                                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-                                                />
-                                                <path
-                                                    stroke-linecap="round"
-                                                    stroke-linejoin="round"
-                                                    stroke-width="2"
-                                                    d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                                                />
-                                            </svg>
-                                        </button>
                                         <a
                                             x-show="game.status === 'finished'"
                                             href="#"
                                             @click.prevent="viewResults(game)"
-                                            class="text-green-600 hover:text-green-700 p-1"
+                                            class="inline-flex h-8 w-8 items-center justify-center rounded-md text-green-600 hover:bg-green-50 hover:text-green-700"
                                             title="Посмотреть результаты"
                                         >
                                             <svg
@@ -475,33 +443,104 @@
                                             x-show="game.status !== 'created'"
                                             :href="'/admin/game/' + game.id + '/status/'"
                                             target="_blank"
-                                            class="text-teal-600 hover:text-teal-700 p-1"
+                                            class="inline-flex h-8 w-8 items-center justify-center rounded-md text-teal-600 hover:bg-teal-50 hover:text-teal-700"
                                             title="Состояние страны"
                                         >
                                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
                                             </svg>
                                         </a>
-                                        <button
-                                            x-show="game.status !== 'finished'"
-                                            @click="confirmDelete(game)"
-                                            class="text-red-600 hover:text-red-700 p-1"
-                                            title="Удалить игру"
-                                        >
-                                            <svg
-                                                class="w-5 h-5"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                viewBox="0 0 24 24"
+                                        <details class="group inline-flex flex-col items-end text-left">
+                                            <summary
+                                                class="inline-flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-md border border-transparent text-gray-500 hover:border-gray-200 hover:bg-gray-50 hover:text-gray-700 group-open:border-gray-300 group-open:bg-white group-open:shadow-sm [&::-webkit-details-marker]:hidden"
+                                                title="Другие действия"
                                             >
-                                                <path
-                                                    stroke-linecap="round"
-                                                    stroke-linejoin="round"
-                                                    stroke-width="2"
-                                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                                />
-                                            </svg>
-                                        </button>
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.75h.01M12 12h.01M12 17.25h.01"/>
+                                                </svg>
+                                            </summary>
+                                            <div class="mt-1 w-56 rounded-md border border-gray-200 bg-white py-1 text-left shadow-lg ring-1 ring-black/5">
+                                                <button
+                                                    x-show="game.status === 'active'"
+                                                    @click="$el.closest('details').open = false; openOperatorModal(game)"
+                                                    class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                                >
+                                                    <svg class="h-4 w-4 flex-none text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 9v1m9-5a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                                    </svg>
+                                                    <span>Иностранная помощь</span>
+                                                </button>
+                                                <button
+                                                    x-show="game.status === 'active'"
+                                                    @click="$el.closest('details').open = false; pauseGame(game)"
+                                                    class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                                >
+                                                    <svg class="h-4 w-4 flex-none text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                                    </svg>
+                                                    <span>Приостановить</span>
+                                                </button>
+                                                <button
+                                                    x-show="game.status === 'paused'"
+                                                    @click="$el.closest('details').open = false; resumeGame(game)"
+                                                    class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                                >
+                                                    <svg class="h-4 w-4 flex-none text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                                    </svg>
+                                                    <span>Возобновить</span>
+                                                </button>
+                                                <button
+                                                    @click="$el.closest('details').open = false; exportPdf(game)"
+                                                    class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                                >
+                                                    <svg class="h-4 w-4 flex-none text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m-8 8h10a2 2 0 002-2V7.828a2 2 0 00-.586-1.414l-3.828-3.828A2 2 0 0013.172 2H7a2 2 0 00-2 2v15a2 2 0 002 2z"/>
+                                                    </svg>
+                                                    <span>Скачать PDF</span>
+                                                </button>
+                                                <button
+                                                    @click="$el.closest('details').open = false; exportExcel(game)"
+                                                    class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                                >
+                                                    <svg class="h-4 w-4 flex-none text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-6m4 6V7m4 10v-4M5 21h14a2 2 0 002-2V7.828a2 2 0 00-.586-1.414l-3.828-3.828A2 2 0 0015.172 2H5a2 2 0 00-2 2v15a2 2 0 002 2z"/>
+                                                    </svg>
+                                                    <span>Скачать Excel</span>
+                                                </button>
+                                                <button
+                                                    x-show="!game.is_archived"
+                                                    @click="$el.closest('details').open = false; archiveGame(game)"
+                                                    class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                                >
+                                                    <svg class="h-4 w-4 flex-none text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v1a2 2 0 01-2 2M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-7 4h4"/>
+                                                    </svg>
+                                                    <span>Архивировать</span>
+                                                </button>
+                                                <button
+                                                    x-show="game.is_archived"
+                                                    @click="$el.closest('details').open = false; unarchiveGame(game)"
+                                                    class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                                >
+                                                    <svg class="h-4 w-4 flex-none text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a4 4 0 014 4v1m0 0l-3-3m3 3l3-3M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2h-7.172a2 2 0 01-1.414-.586L9 4H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                                    </svg>
+                                                    <span>Вернуть из архива</span>
+                                                </button>
+                                                <button
+                                                    x-show="game.status !== 'finished'"
+                                                    @click="$el.closest('details').open = false; confirmDelete(game)"
+                                                    class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+                                                >
+                                                    <svg class="h-4 w-4 flex-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                                    </svg>
+                                                    <span>Удалить игру</span>
+                                                </button>
+                                            </div>
+                                        </details>
                                     </div>
                                 </td>
                             </tr>
@@ -523,7 +562,7 @@
                 x-show="availableTeams.length === 0"
                 class="p-8 text-center text-gray-500"
             >
-                <p>Все команды уже имеют активные игры</p>
+                <p>Все команды уже имеют игры</p>
             </div>
 
             <div x-show="availableTeams.length > 0" class="p-4">
@@ -547,6 +586,16 @@
                                 </div>
                                 <div class="flex items-center gap-2">
                                     <button
+                                        type="button"
+                                        @click="openTeamPasswordModal(team)"
+                                        class="text-gray-500 hover:text-strategem-700 p-1"
+                                        :title="team.has_access_password ? 'Сменить пароль' : 'Создать пароль'"
+                                    >
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                                        </svg>
+                                    </button>
+                                    <button
                                         @click="confirmDeleteEntity('team', team.id, team.name)"
                                         class="text-red-500 hover:text-red-700 p-1"
                                         title="Удалить команду"
@@ -556,14 +605,6 @@
                                         </svg>
                                     </button>
                                 </div>
-                            </div>
-                            <div class="mt-3">
-                                <button
-                                    type="button"
-                                    @click="openTeamPasswordModal(team)"
-                                    class="px-3 py-1.5 text-xs border border-gray-300 rounded-md hover:bg-gray-50"
-                                    x-text="team.has_access_password ? 'Сменить пароль' : 'Создать пароль'"
-                                ></button>
                             </div>
                         </div>
                     </template>
@@ -624,26 +665,54 @@
                         <div class="border border-gray-200 rounded-lg overflow-hidden">
                             <!-- Faculty row -->
                             <div class="flex items-center justify-between px-4 py-2 bg-gray-100 border-b border-gray-200">
-                                <span class="font-semibold text-gray-800" x-text="faculty.name"></span>
                                 <button
-                                    @click="confirmDeleteEntity('faculty', faculty.id, faculty.name)"
-                                    class="text-red-500 hover:text-red-700 p-1"
-                                    title="Удалить факультет"
+                                    type="button"
+                                    @click="toggleFaculty(faculty.id)"
+                                    class="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                    :title="isFacultyCollapsed(faculty.id) ? 'Развернуть факультет' : 'Свернуть факультет'"
                                 >
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    <svg x-show="!isFacultyCollapsed(faculty.id)" class="w-4 h-4 flex-shrink-0 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                                     </svg>
+                                    <svg x-show="isFacultyCollapsed(faculty.id)" class="w-4 h-4 flex-shrink-0 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                                    </svg>
+                                    <span class="font-semibold text-gray-800 truncate" x-text="faculty.name"></span>
                                 </button>
+                                <div class="flex items-center gap-2">
+                                    <button
+                                        @click="confirmDeleteEntity('faculty', faculty.id, faculty.name)"
+                                        class="text-red-500 hover:text-red-700 p-1"
+                                        title="Удалить факультет"
+                                    >
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                        </svg>
+                                    </button>
+                                </div>
                             </div>
                             <!-- Groups -->
                             <template x-for="group in groupsFiltered(faculty.id)" :key="group.id">
-                                <div>
+                                <div x-show="!isFacultyCollapsed(faculty.id) || treeSearch.trim()">
                                     <!-- Group row -->
                                     <div class="flex items-center justify-between pl-6 pr-4 py-1.5 bg-gray-50 border-b border-gray-100">
-                                        <span class="text-sm font-medium text-gray-700">
-                                            <span x-text="group.name"></span>
-                                            <span class="text-gray-400 font-normal ml-1" x-text="'(' + group.year + ')'"></span>
-                                        </span>
+                                        <button
+                                            type="button"
+                                            @click="toggleGroup(group.id)"
+                                            class="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                            :title="isGroupCollapsed(group.id) ? 'Развернуть группу' : 'Свернуть группу'"
+                                        >
+                                            <svg x-show="!isGroupCollapsed(group.id)" class="w-3.5 h-3.5 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                            </svg>
+                                            <svg x-show="isGroupCollapsed(group.id)" class="w-3.5 h-3.5 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                                            </svg>
+                                            <span class="text-sm font-medium text-gray-700 truncate">
+                                                <span x-text="group.name"></span>
+                                                <span class="text-gray-400 font-normal ml-1" x-text="'(' + group.year + ')'"></span>
+                                            </span>
+                                        </button>
                                         <button
                                             @click="confirmDeleteEntity('group', group.id, group.name)"
                                             class="text-red-400 hover:text-red-600 p-0.5"
@@ -656,31 +725,38 @@
                                     </div>
                                     <!-- Teams in this group -->
                                     <template x-for="team in teamsFiltered(group.id)" :key="team.id">
-                                        <div class="pl-12 pr-4 py-2 border-b border-gray-100 last:border-0 hover:bg-blue-50 transition-colors">
+                                        <div
+                                            x-show="!isGroupCollapsed(group.id) || treeSearch.trim()"
+                                            class="pl-12 pr-4 py-2 border-b border-gray-100 last:border-0 hover:bg-blue-50 transition-colors"
+                                        >
                                             <div class="flex items-center justify-between gap-3">
                                                 <span class="text-sm text-gray-600" x-text="team.name"></span>
-                                                <button
-                                                    @click="confirmDeleteEntity('team', team.id, team.name)"
-                                                    class="text-red-400 hover:text-red-600 p-0.5"
-                                                    title="Удалить команду"
-                                                >
-                                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                                                    </svg>
-                                                </button>
-                                            </div>
-                                            <div class="mt-1">
-                                                <button
-                                                    type="button"
-                                                    @click="openTeamPasswordModal(team)"
-                                                    class="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-50"
-                                                    x-text="team.has_access_password ? 'Сменить пароль' : 'Создать пароль'"
-                                                ></button>
+                                                <div class="flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        @click="openTeamPasswordModal(team)"
+                                                        class="text-gray-400 hover:text-strategem-700 p-0.5"
+                                                        :title="team.has_access_password ? 'Сменить пароль' : 'Создать пароль'"
+                                                    >
+                                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                                                        </svg>
+                                                    </button>
+                                                    <button
+                                                        @click="confirmDeleteEntity('team', team.id, team.name)"
+                                                        class="text-red-400 hover:text-red-600 p-0.5"
+                                                        title="Удалить команду"
+                                                    >
+                                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                                        </svg>
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
                                     </template>
                                     <div
-                                        x-show="teamsFiltered(group.id).length === 0"
+                                        x-show="(!isGroupCollapsed(group.id) || treeSearch.trim()) && teamsFiltered(group.id).length === 0"
                                         class="pl-12 pr-4 py-1 text-xs text-gray-400 border-b border-gray-100"
                                     >
                                         Нет команд
@@ -688,7 +764,7 @@
                                 </div>
                             </template>
                             <div
-                                x-show="groupsFiltered(faculty.id).length === 0"
+                                x-show="(!isFacultyCollapsed(faculty.id) || treeSearch.trim()) && groupsFiltered(faculty.id).length === 0"
                                 class="pl-6 pr-4 py-2 text-sm text-gray-400"
                             >
                                 Нет групп
@@ -973,8 +1049,7 @@
                             x-show="availableTeams.length === 0"
                             class="mt-1 text-sm text-yellow-600"
                         >
-                            Нет доступных команд. Все команды уже имеют активные
-                            игры.
+                            Нет доступных команд. Все команды уже имеют игры.
                         </p>
                     </div>
 
@@ -1506,6 +1581,25 @@
                 </div>
 
                 <div class="space-y-4">
+                    <label class="flex items-center justify-between gap-3 rounded-md border border-gray-200 px-3 py-2">
+                        <span>
+                            <span class="block text-sm font-medium text-gray-900">Включить пароль</span>
+                            <span class="block text-xs text-gray-500">Если выключено, команда входит без пароля</span>
+                        </span>
+                        <button
+                            type="button"
+                            role="switch"
+                            :aria-checked="teamPasswordModalEnabled.toString()"
+                            @click="teamPasswordModalEnabled = !teamPasswordModalEnabled"
+                            class="relative inline-flex h-6 w-11 flex-shrink-0 rounded-full transition-colors"
+                            :class="teamPasswordModalEnabled ? 'bg-strategem-600' : 'bg-gray-300'"
+                        >
+                            <span
+                                class="inline-block h-5 w-5 rounded-full bg-white shadow transition-transform mt-0.5"
+                                :class="teamPasswordModalEnabled ? 'translate-x-4' : 'translate-x-0'"
+                            ></span>
+                        </button>
+                    </label>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">
                             Новый пароль
@@ -1515,13 +1609,16 @@
                                 type="text"
                                 x-model="teamPasswordModalValue"
                                 autocomplete="new-password"
+                                :disabled="!teamPasswordModalEnabled"
                                 class="min-w-0 flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-strategem-500 focus:border-strategem-500"
+                                :class="!teamPasswordModalEnabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''"
                                 placeholder="Например: luna-42"
                             />
                             <button
                                 type="button"
                                 @click="generateTeamPasswordForModal()"
-                                class="px-3 py-2 text-sm border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                                :disabled="!teamPasswordModalEnabled"
+                                class="px-3 py-2 text-sm border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
                             >
                                 Сгенерировать
                             </button>
@@ -1644,26 +1741,45 @@
                         />
                     </div>
                     <div>
+                        <label class="flex items-center justify-between gap-3 rounded-md border border-gray-200 px-3 py-2 mb-3">
+                            <span>
+                                <span class="block text-sm font-medium text-gray-900">Включить пароль</span>
+                                <span class="block text-xs text-gray-500">Если выключено, команда входит без пароля</span>
+                            </span>
+                            <button
+                                type="button"
+                                role="switch"
+                                :aria-checked="newTeam.password_enabled.toString()"
+                                @click="newTeam.password_enabled = !newTeam.password_enabled"
+                                class="relative inline-flex h-6 w-11 flex-shrink-0 rounded-full transition-colors"
+                                :class="newTeam.password_enabled ? 'bg-strategem-600' : 'bg-gray-300'"
+                            >
+                                <span
+                                    class="inline-block h-5 w-5 rounded-full bg-white shadow transition-transform mt-0.5"
+                                    :class="newTeam.password_enabled ? 'translate-x-4' : 'translate-x-0'"
+                                ></span>
+                            </button>
+                        </label>
                         <label
                             class="block text-sm font-medium text-gray-700 mb-2"
                             >Пароль команды</label
                         >
                         <button
-                            x-show="!showCreateTeamPassword"
+                            x-show="newTeam.password_enabled && !showCreateTeamPassword"
                             type="button"
                             @click="createTeamPassword()"
                             class="px-3 py-2 text-sm border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
                         >
                             Создать пароль
                         </button>
-                        <div x-show="showCreateTeamPassword" class="flex gap-2">
+                        <div x-show="newTeam.password_enabled && showCreateTeamPassword" class="flex gap-2">
                             <input
                                 type="text"
                                 x-model="newTeam.access_password"
                                 autocomplete="new-password"
                                 class="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-strategem-500 focus:border-strategem-500"
                                 placeholder="Например: luna-42"
-                                required
+                                :required="newTeam.password_enabled"
                             />
                             <button
                                 type="button"
@@ -1673,6 +1789,9 @@
                                 Новый
                             </button>
                         </div>
+                        <p x-show="!newTeam.password_enabled" class="text-sm text-gray-500">
+                            Вход будет доступен без пароля.
+                        </p>
                     </div>
                     <div
                         x-show="createTeamError"
@@ -1693,7 +1812,7 @@
                         </button>
                         <button
                             type="submit"
-                            :disabled="!newTeam.group || !newTeam.name || newTeam.access_password.trim().length < 6 || creatingTeam"
+                            :disabled="!newTeam.group || !newTeam.name || (newTeam.password_enabled && newTeam.access_password.trim().length < 6) || creatingTeam"
                             class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                         >
                             <span

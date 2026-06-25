@@ -27,6 +27,8 @@ class GameAdmin(admin.ModelAdmin):
         "difficulty",
         "current_period",
         "total_periods",
+        "is_archived",
+        "finished_at",
         "created_at",
         "updated_at",
     ]
@@ -34,6 +36,7 @@ class GameAdmin(admin.ModelAdmin):
     list_filter = [
         "status",
         "difficulty",
+        "is_archived",
         "created_at",
         "team__group__faculty",
     ]

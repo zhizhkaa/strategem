@@ -166,8 +166,6 @@ class TeamCreateSerializer(serializers.ModelSerializer):
         return validate_team_access_password(value)
 
     def create(self, validated_data: dict) -> Team:
-        if not validated_data.get("access_password"):
-            validated_data["access_password"] = generate_team_password()
         return super().create(validated_data)
 
 
@@ -209,6 +207,9 @@ class GameListSerializer(serializers.ModelSerializer):
             "difficulty_display",
             "current_period",
             "total_periods",
+            "is_archived",
+            "archived_at",
+            "finished_at",
             "created_at",
             "updated_at",
         ]
@@ -296,6 +297,9 @@ class GameDetailSerializer(serializers.ModelSerializer):
             "difficulty_display",
             "current_period",
             "total_periods",
+            "is_archived",
+            "archived_at",
+            "finished_at",
             "decision_states",
             "can_advance_period",
             "created_at",

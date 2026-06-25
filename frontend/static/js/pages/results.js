@@ -164,6 +164,11 @@ function gameResults() {
                 return "text-gray-500";
             },
 
+            exportUrl(format) {
+                if (!this.gameId) return "#";
+                return `/api/games/${this.gameId}/export/${format}/`;
+            },
+
             renderAllCharts() {
                 this.renderScoreChart();
                 this.renderPopulationCountChart();

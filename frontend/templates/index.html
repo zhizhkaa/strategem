@@ -98,7 +98,7 @@
         </div>
 
         <!-- Team Password -->
-        <div x-show="selectedTeamData?.has_active_game" x-cloak>
+        <div x-show="selectedTeamData?.has_active_game && selectedTeamData?.has_access_password" x-cloak>
             <label
                 for="team-password"
                 class="block text-sm font-medium text-gray-700 mb-2"

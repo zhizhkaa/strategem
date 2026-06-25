@@ -9,6 +9,7 @@ function adminPanel() {
             groups: [],
             documents: [],
             savingTeamPasswords: {},
+            showArchivedGames: false,
 
             // Modal state
             showCreateModal: false,
@@ -48,11 +49,12 @@ function adminPanel() {
             createGroupError: null,
 
             // Team form state
-            newTeam: { name: "", group: "", access_password: "" },
+            newTeam: { name: "", group: "", access_password: "", password_enabled: true },
             creatingTeam: false,
             createTeamError: null,
             teamPasswordModalTeam: null,
             teamPasswordModalValue: "",
+            teamPasswordModalEnabled: true,
             savingTeamPasswordModal: false,
             teamPasswordModalError: null,
 
@@ -74,6 +76,8 @@ function adminPanel() {
             // Поиск и фильтрация дерева
             treeSearch: '',
             treeFacultyFilter: '',
+            expandedFaculties: {},
+            expandedGroups: {},
 
             facultiesFiltered() {
                 return this.faculties.filter(f => {
@@ -102,10 +106,28 @@ function adminPanel() {
                 });
             },
 
+            isFacultyCollapsed(facultyId) {
+                return !this.expandedFaculties[facultyId];
+            },
+            toggleFaculty(facultyId) {
+                this.expandedFaculties = {
+                    ...this.expandedFaculties,
+                    [facultyId]: !this.expandedFaculties[facultyId],
+                };
+            },
+            isGroupCollapsed(groupId) {
+                return !this.expandedGroups[groupId];
+            },
+            toggleGroup(groupId) {
+                this.expandedGroups = {
+                    ...this.expandedGroups,
+                    [groupId]: !this.expandedGroups[groupId],
+                };
+            },
+
             // Computed
             get availableTeams() {
-                const teamsWithGames = new Set(this.games.map((g) => g.team));
-                return this.teams.filter((t) => !teamsWithGames.has(t.id));
+                return this.teams.filter((team) => !team.game_status);
             },
 
             // Lifecycle
@@ -135,10 +157,16 @@ function adminPanel() {
 
             async loadGames() {
                 try {
-                    this.games = await API.get("/games/");
+                    const suffix = this.showArchivedGames ? "?archived=1" : "";
+                    this.games = await API.get(`/games/${suffix}`);
                 } catch (e) {
                     showToast("Ошибка загрузки игр: " + e.message, "error");
                 }
+            },
+
+            async setGamesArchiveView(showArchived) {
+                this.showArchivedGames = showArchived;
+                await this.loadGames();
             },
 
             async loadTeams() {
@@ -205,7 +233,7 @@ function adminPanel() {
 
                     showToast("Игра успешно создана", "success");
                     this.showCreateModal = false;
-                    await this.loadGames();
+                    await Promise.all([this.loadGames(), this.loadTeams()]);
                 } catch (e) {
                     this.createError = e.message;
                 } finally {
@@ -243,6 +271,34 @@ function adminPanel() {
                 } catch (e) {
                     showToast("Ошибка: " + e.message, "error");
                 }
+            },
+
+            async archiveGame(game) {
+                try {
+                    await API.post(`/games/${game.id}/archive/`);
+                    showToast("Игра перемещена в архив", "success");
+                    await this.loadGames();
+                } catch (e) {
+                    showToast("Ошибка архивирования: " + e.message, "error");
+                }
+            },
+
+            async unarchiveGame(game) {
+                try {
+                    await API.post(`/games/${game.id}/unarchive/`);
+                    showToast("Игра возвращена из архива", "success");
+                    await this.loadGames();
+                } catch (e) {
+                    showToast("Ошибка восстановления: " + e.message, "error");
+                }
+            },
+
+            exportPdf(game) {
+                window.location.href = `/api/games/${game.id}/export/pdf/`;
+            },
+
+            exportExcel(game) {
+                window.location.href = `/api/games/${game.id}/export/excel/`;
             },
 
             async openOperatorModal(game) {
@@ -317,7 +373,7 @@ function adminPanel() {
                     showToast("Игра удалена", "success");
                     this.showDeleteModal = false;
                     this.gameToDelete = null;
-                    await this.loadGames();
+                    await Promise.all([this.loadGames(), this.loadTeams()]);
                 } catch (e) {
                     showToast("Ошибка удаления: " + e.message, "error");
                 } finally {
@@ -516,6 +572,7 @@ function adminPanel() {
                     name: "",
                     group: "",
                     access_password: "",
+                    password_enabled: true,
                 };
                 this.showCreateTeamPassword = false;
                 this.createTeamError = null;
@@ -523,7 +580,11 @@ function adminPanel() {
             },
 
             async createTeam() {
-                if (!this.newTeam.group || !this.newTeam.name || !this.newTeam.access_password) return;
+                if (!this.newTeam.group || !this.newTeam.name) return;
+                if (this.newTeam.password_enabled && this.newTeam.access_password.trim().length < 6) {
+                    this.createTeamError = "Пароль команды должен быть не короче 6 символов";
+                    return;
+                }
                 this.creatingTeam = true;
                 this.createTeamError = null;
 
@@ -531,7 +592,9 @@ function adminPanel() {
                     await API.post("/teams/", {
                         name: this.newTeam.name,
                         group: parseInt(this.newTeam.group),
-                        access_password: this.newTeam.access_password.trim(),
+                        access_password: this.newTeam.password_enabled
+                            ? this.newTeam.access_password.trim()
+                            : "",
                     });
                     showToast("Команда создана", "success");
                     this.showCreateTeamModal = false;
@@ -552,6 +615,7 @@ function adminPanel() {
             },
 
             createTeamPassword() {
+                this.newTeam.password_enabled = true;
                 this.newTeam.access_password = this.generateTeamPassword();
                 this.showCreateTeamPassword = true;
             },
@@ -559,6 +623,7 @@ function adminPanel() {
             openTeamPasswordModal(team) {
                 this.teamPasswordModalTeam = team;
                 this.teamPasswordModalValue = "";
+                this.teamPasswordModalEnabled = Boolean(team.has_access_password);
                 this.teamPasswordModalError = null;
                 this.showTeamPasswordModal = true;
             },
@@ -567,21 +632,24 @@ function adminPanel() {
                 this.showTeamPasswordModal = false;
                 this.teamPasswordModalTeam = null;
                 this.teamPasswordModalValue = "";
+                this.teamPasswordModalEnabled = true;
                 this.teamPasswordModalError = null;
                 this.savingTeamPasswordModal = false;
             },
 
             generateTeamPasswordForModal() {
+                this.teamPasswordModalEnabled = true;
                 this.teamPasswordModalValue = this.generateTeamPassword();
             },
 
             canSaveTeamPassword() {
-                return Boolean(this.teamPasswordModalValue && this.teamPasswordModalValue.trim().length >= 6)
+                return (!this.teamPasswordModalEnabled || Boolean(this.teamPasswordModalValue && this.teamPasswordModalValue.trim().length >= 6))
                     && !this.savingTeamPasswordModal;
             },
 
             async saveTeamPassword() {
-                if (!this.teamPasswordModalTeam || this.teamPasswordModalValue.trim().length < 6) {
+                if (!this.teamPasswordModalTeam) return;
+                if (this.teamPasswordModalEnabled && this.teamPasswordModalValue.trim().length < 6) {
                     this.teamPasswordModalError = "Пароль команды должен быть не короче 6 символов";
                     return;
                 }
@@ -589,9 +657,16 @@ function adminPanel() {
                 this.teamPasswordModalError = null;
                 try {
                     await API.patch(`/teams/${this.teamPasswordModalTeam.id}/`, {
-                        access_password: this.teamPasswordModalValue.trim(),
+                        access_password: this.teamPasswordModalEnabled
+                            ? this.teamPasswordModalValue.trim()
+                            : "",
                     });
-                    showToast("Пароль команды сохранён", "success");
+                    showToast(
+                        this.teamPasswordModalEnabled
+                            ? "Пароль команды сохранён"
+                            : "Вход без пароля включён",
+                        "success",
+                    );
                     this.closeTeamPasswordModal();
                     await this.loadTeams();
                 } catch (e) {
