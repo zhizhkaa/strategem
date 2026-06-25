@@ -95,6 +95,7 @@ class TeamSerializer(serializers.ModelSerializer):
     faculty_name = serializers.CharField(source="group.faculty.name", read_only=True)
     has_active_game = serializers.SerializerMethodField()
     access_password = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    password_enabled = serializers.BooleanField(required=False, write_only=True)
     has_access_password = serializers.SerializerMethodField()
     has_finished_game = serializers.SerializerMethodField()
     game_status = serializers.SerializerMethodField()
@@ -109,6 +110,7 @@ class TeamSerializer(serializers.ModelSerializer):
             "faculty_name",
             "has_active_game",
             "access_password",
+            "password_enabled",
             "has_access_password",
             "has_finished_game",
             "game_status",
@@ -140,15 +142,31 @@ class TeamSerializer(serializers.ModelSerializer):
     def validate_access_password(self, value: str) -> str:
         return validate_team_access_password(value)
 
+    def update(self, instance: Team, validated_data: dict) -> Team:
+        password_enabled = validated_data.pop("password_enabled", None)
+        access_password = validated_data.pop("access_password", None)
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        if password_enabled is False:
+            instance.access_password = ""
+        elif access_password:
+            instance.access_password = access_password
+
+        instance.save()
+        return instance
+
 
 class TeamCreateSerializer(serializers.ModelSerializer):
     """Сериализатор для создания команды."""
 
     access_password = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    password_enabled = serializers.BooleanField(required=False, write_only=True)
 
     class Meta:
         model = Team
-        fields = ["id", "name", "group", "access_password"]
+        fields = ["id", "name", "group", "access_password", "password_enabled"]
         read_only_fields = ["id"]
 
     def validate(self, data: dict) -> dict:
@@ -166,6 +184,9 @@ class TeamCreateSerializer(serializers.ModelSerializer):
         return validate_team_access_password(value)
 
     def create(self, validated_data: dict) -> Team:
+        password_enabled = validated_data.pop("password_enabled", True)
+        if password_enabled is False:
+            validated_data["access_password"] = ""
         return super().create(validated_data)
 
 

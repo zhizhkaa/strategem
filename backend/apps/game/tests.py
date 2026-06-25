@@ -287,6 +287,33 @@ class GameApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["game"]["team"], team.id)
 
+    def test_team_can_enter_finished_game(self):
+        team = Team.objects.create(
+            name="Команда с завершённой игрой",
+            group=self.group,
+            access_password="terra-24",
+        )
+        Game.objects.create(
+            team=team,
+            status=GameStatus.FINISHED,
+            difficulty=GameDifficulty.STANDARD,
+            total_periods=12,
+        )
+
+        session = self.client.session
+        session["is_admin"] = False
+        session.save()
+
+        response = self.client.post(
+            f"/api/teams/{team.id}/game/",
+            {"password": "terra-24"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["game"]["team"], team.id)
+        self.assertEqual(response.data["game"]["status"], GameStatus.FINISHED)
+
     def test_team_list_never_returns_raw_password(self):
         team = Team.objects.create(
             name="Команда пароль",
@@ -380,6 +407,44 @@ class GameApiTests(APITestCase):
         self.assertNotEqual(team.access_password, "nova-55")
         self.assertTrue(team.check_access_password("nova-55"))
         self.assertNotIn("access_password", response.data)
+        self.assertTrue(response.data["has_access_password"])
+
+    def test_admin_can_disable_team_password(self):
+        team = Team.objects.create(
+            name="Команда отключить пароль",
+            group=self.group,
+            access_password="atlas-17",
+        )
+
+        response = self.client.patch(
+            f"/api/teams/{team.id}/",
+            {"password_enabled": False, "access_password": ""},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        team.refresh_from_db()
+        self.assertEqual(team.access_password, "")
+        self.assertFalse(response.data["has_access_password"])
+
+    def test_admin_can_keep_existing_team_password_with_empty_patch_value(self):
+        team = Team.objects.create(
+            name="Команда оставить пароль",
+            group=self.group,
+            access_password="atlas-17",
+        )
+        stored_password = team.access_password
+
+        response = self.client.patch(
+            f"/api/teams/{team.id}/",
+            {"password_enabled": True, "access_password": ""},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        team.refresh_from_db()
+        self.assertEqual(team.access_password, stored_password)
+        self.assertTrue(team.check_access_password("atlas-17"))
         self.assertTrue(response.data["has_access_password"])
 
     def test_admin_cannot_save_too_short_team_password(self):
@@ -2118,6 +2183,10 @@ class FrontendAssetTests(TestCase):
         self.assertNotIn('<span x-show="team.has_active_game"> (есть игра)</span>', index_template)
         self.assertIn("teamOptionLabel(team)", team_selection_js)
         self.assertIn('team.has_active_game ? `${team.name} (есть игра)` : team.name', team_selection_js)
+        self.assertIn("selectedTeamHasGame", team_selection_js + index_template)
+        self.assertIn('response.game.status === "finished"', team_selection_js)
+        self.assertIn('"/game-results/"', team_selection_js)
+        self.assertIn("Открыть итоги", index_template)
         self.assertIn('API.get("/teams/?public=1")', team_selection_js)
         self.assertIn(":type=\"showTeamPassword ? 'text' : 'password'\"", index_template)
         self.assertIn("absolute inset-y-0 right-0", index_template)
@@ -2236,6 +2305,10 @@ class FrontendAssetTests(TestCase):
         self.assertIn("openTeamPasswordModal(team)", admin_js + admin_template)
         self.assertIn("teamPasswordModalValue", admin_js + admin_template)
         self.assertIn("canSaveTeamPassword()", admin_js + admin_template)
+        self.assertIn("password_enabled: this.teamPasswordModalEnabled", admin_js)
+        self.assertIn("toggleTeamPasswordModalEnabled()", admin_js + admin_template)
+        self.assertIn("translate-x-5", admin_template)
+        self.assertIn("Оставьте поле пустым, чтобы не менять текущий пароль.", admin_template)
         self.assertNotIn("show_access_password", admin_js + admin_template)
         self.assertNotIn("x-model=\"team.access_password\"", admin_template)
         self.assertIn("showCreateTeamPassword", admin_js + admin_template)

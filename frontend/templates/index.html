@@ -98,7 +98,7 @@
         </div>
 
         <!-- Team Password -->
-        <div x-show="selectedTeamData?.has_active_game && selectedTeamData?.has_access_password" x-cloak>
+        <div x-show="selectedTeamHasGame && selectedTeamData?.has_access_password" x-cloak>
             <label
                 for="team-password"
                 class="block text-sm font-medium text-gray-700 mb-2"
@@ -153,7 +153,7 @@
             <template x-if="loading">
                 <div class="loader mr-2"></div>
             </template>
-            <span x-text="loading ? 'Загрузка...' : 'Войти в игру'"></span>
+            <span x-text="loading ? 'Загрузка...' : (selectedTeamData?.has_finished_game ? 'Открыть итоги' : 'Войти в игру')"></span>
         </button>
     </div>
 </div>

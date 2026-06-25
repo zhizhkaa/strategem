@@ -34,10 +34,17 @@ function teamSelection() {
                 return this.teams.find((t) => t.id == this.selectedTeam);
             },
 
+            get selectedTeamHasGame() {
+                return Boolean(
+                    this.selectedTeamData?.has_active_game
+                    || this.selectedTeamData?.has_finished_game
+                );
+            },
+
             get canEnterGame() {
                 return (
                     this.selectedTeam
-                    && this.selectedTeamData?.has_active_game
+                    && this.selectedTeamHasGame
                     && (
                         !this.selectedTeamData?.has_access_password
                         || this.teamPassword.trim().length > 0
@@ -161,7 +168,9 @@ function teamSelection() {
                             "strategem_game",
                             response.game.id,
                         );
-                        window.location.href = "/game/";
+                        window.location.href = response.game.status === "finished"
+                            ? "/game-results/"
+                            : "/game/";
                     } else {
                         this.error =
                             "У команды нет активной игры. Обратитесь к администратору.";

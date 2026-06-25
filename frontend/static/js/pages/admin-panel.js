@@ -592,6 +592,7 @@ function adminPanel() {
                     await API.post("/teams/", {
                         name: this.newTeam.name,
                         group: parseInt(this.newTeam.group),
+                        password_enabled: this.newTeam.password_enabled,
                         access_password: this.newTeam.password_enabled
                             ? this.newTeam.access_password.trim()
                             : "",
@@ -628,6 +629,11 @@ function adminPanel() {
                 this.showTeamPasswordModal = true;
             },
 
+            toggleTeamPasswordModalEnabled() {
+                this.teamPasswordModalEnabled = !this.teamPasswordModalEnabled;
+                this.teamPasswordModalError = null;
+            },
+
             closeTeamPasswordModal() {
                 this.showTeamPasswordModal = false;
                 this.teamPasswordModalTeam = null;
@@ -643,13 +649,21 @@ function adminPanel() {
             },
 
             canSaveTeamPassword() {
-                return (!this.teamPasswordModalEnabled || Boolean(this.teamPasswordModalValue && this.teamPasswordModalValue.trim().length >= 6))
+                const hasCurrentPassword = Boolean(this.teamPasswordModalTeam?.has_access_password);
+                const newPassword = (this.teamPasswordModalValue || "").trim();
+                return (
+                    !this.teamPasswordModalEnabled
+                    || hasCurrentPassword
+                    || newPassword.length >= 6
+                )
                     && !this.savingTeamPasswordModal;
             },
 
             async saveTeamPassword() {
                 if (!this.teamPasswordModalTeam) return;
-                if (this.teamPasswordModalEnabled && this.teamPasswordModalValue.trim().length < 6) {
+                const hasCurrentPassword = Boolean(this.teamPasswordModalTeam.has_access_password);
+                const newPassword = this.teamPasswordModalValue.trim();
+                if (this.teamPasswordModalEnabled && !hasCurrentPassword && newPassword.length < 6) {
                     this.teamPasswordModalError = "Пароль команды должен быть не короче 6 символов";
                     return;
                 }
@@ -657,14 +671,17 @@ function adminPanel() {
                 this.teamPasswordModalError = null;
                 try {
                     await API.patch(`/teams/${this.teamPasswordModalTeam.id}/`, {
+                        password_enabled: this.teamPasswordModalEnabled,
                         access_password: this.teamPasswordModalEnabled
-                            ? this.teamPasswordModalValue.trim()
+                            ? newPassword
                             : "",
                     });
                     showToast(
-                        this.teamPasswordModalEnabled
+                        this.teamPasswordModalEnabled && newPassword
                             ? "Пароль команды сохранён"
-                            : "Вход без пароля включён",
+                            : this.teamPasswordModalEnabled
+                                ? "Настройки пароля сохранены"
+                                : "Вход без пароля включён",
                         "success",
                     );
                     this.closeTeamPasswordModal();
