@@ -107,7 +107,7 @@ function ministerApp(ministerKey) {
         },
 
         async loadStructure() {
-            const data = await API.get('/games/decision-structure/');
+            const data = await API.get(`/games/decision-structure/?game_id=${encodeURIComponent(this.gameId)}`);
             this.PARAM_VERBOSE = Object.fromEntries(
                 Object.entries(data.parameters).map(([k, v]) => [k, v.verbose_name])
             );
@@ -377,10 +377,14 @@ function ministerApp(ministerKey) {
         },
         isStageAvailable(stageKey) {
             const stage = this.ministerStages.find(s => s.key === stageKey);
+            const decision = this.ministerConfig.decisions.find(d => d.key === stageKey);
+            if (!stage && decision?.readonly?.length && !decision.inputs?.length) return true;
             return stage ? stage.available : false;
         },
         isStageCompleted(stageKey) {
             const stage = this.ministerStages.find(s => s.key === stageKey);
+            const decision = this.ministerConfig.decisions.find(d => d.key === stageKey);
+            if (!stage && decision?.readonly?.length && !decision.inputs?.length) return true;
             return stage ? stage.completed : false;
         },
         isInputEnabled(param) {

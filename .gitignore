@@ -38,6 +38,7 @@ backend/media/
 /data/
 /docs/StratagemmanualEnglish.PDF
 /docs/Расчеты.xlsx
+strategem.zip
 
 ### Django ###
 *.log

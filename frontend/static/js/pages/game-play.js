@@ -62,7 +62,7 @@ function gameApp() {
         },
 
         async loadStructure() {
-            const data = await API.get('/games/decision-structure/');
+            const data = await API.get(`/games/decision-structure/?game_id=${encodeURIComponent(this.gameId)}`);
             this.SUMMARY_GROUPS = data.summary_groups;
             this.SUMMARY_INFO = data.summary_info || [];
             this.PARAM_VERBOSE = Object.fromEntries(

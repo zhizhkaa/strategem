@@ -54,17 +54,29 @@ class FormulaValidator:
         "TF2",
     ]
 
-    def __init__(self):
+    def __init__(self, config_data: dict | None = None):
         """Инициализация валидатора с загрузкой конфигурации."""
         self._parameters: dict = {}
         self._formulas: dict = {}
         self._errors: list[str] = []
         self._warnings: list[str] = []
+        self._config_data = config_data
         self._load_config()
 
     def _load_config(self) -> None:
         """Загружает конфигурацию параметров и формул."""
         data_dir = Path(__file__).parent.parent / "data"
+
+        if self._config_data is not None:
+            params_data = self._config_data.get("parameters.yaml") or {}
+            for category in params_data.values():
+                if isinstance(category, dict):
+                    self._parameters.update(category)
+            self._formulas = self._config_data.get("formulas.yaml") or {}
+            interp_data = self._config_data.get("interpolation.yaml") or {}
+            if isinstance(interp_data, dict):
+                self.INTERPOLATION_TABLES = list(interp_data.keys())
+            return
 
         # Загружаем параметры
         params_path = data_dir / "parameters.yaml"
@@ -338,8 +350,10 @@ class FormulaValidator:
 
         def dfs(node: str, path: list[str]) -> list[str] | None:
             if node in rec_stack:
-                cycle_start = path.index(node)
-                return path[cycle_start:] + [node]
+                if node in path:
+                    cycle_start = path.index(node)
+                    return path[cycle_start:] + [node]
+                return [node, node]
 
             if node in visited:
                 return None

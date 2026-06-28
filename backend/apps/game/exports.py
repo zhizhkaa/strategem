@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from io import BytesIO
-from pathlib import Path
 from datetime import timezone, timedelta
 from typing import Any
 
-from django.conf import settings
+from apps.management.models import Group
 
-from .models import PARAMETERS_CONFIG, Game, GamePeriod
+from .configuration import get_calculator_for_game
+from .models import Game, GamePeriod
 
 
 SUMMARY_PARAMS = [
@@ -78,6 +78,8 @@ def build_results_xlsx(game: Game) -> bytes:
 
     context = build_export_context(game)
     periods: list[GamePeriod] = context["periods"]
+    calculator = get_calculator_for_game(game)
+    parameter_config = calculator.get_parameters_config()
 
     workbook = Workbook()
     header_fill = PatternFill("solid", fgColor="DDEAF7")
@@ -114,15 +116,15 @@ def build_results_xlsx(game: Game) -> bytes:
         sheet.append(())
         return sheet.max_row + 1
 
-    summary_sheet = workbook.active
-    summary_sheet.title = "Сводные итоги"
-    summary_start = write_metadata(summary_sheet, "Сводные итоги по периодам")
-    summary_headers = [
+    status_sheet = workbook.active
+    status_sheet.title = "Состояние страны"
+    status_start = write_metadata(status_sheet, "Состояние страны")
+    status_headers = [
         "Показатель",
         *[f"Период {period.period_number}" for period in periods],
     ]
-    summary_sheet.append(summary_headers)
-    for cell in summary_sheet[summary_start]:
+    status_sheet.append(status_headers)
+    for cell in status_sheet[status_start]:
         cell.font = header_font
         cell.fill = header_fill
         cell.border = border
@@ -139,15 +141,16 @@ def build_results_xlsx(game: Game) -> bytes:
         ("Рождаемость", lambda period: _number(period.P8)),
     ]
     for label, getter in summary_metrics:
-        summary_sheet.append([label, *[getter(period) for period in periods]])
-        for cell in summary_sheet[summary_sheet.max_row]:
+        status_sheet.append([label, *[getter(period) for period in periods]])
+        for cell in status_sheet[status_sheet.max_row]:
             cell.border = border
             if cell.column >= 2:
                 cell.alignment = Alignment(horizontal="right")
 
-    summary_sheet.column_dimensions["A"].width = 24
-    for column in range(2, len(summary_headers) + 1):
-        summary_sheet.column_dimensions[get_column_letter(column)].width = 14
+    status_sheet.freeze_panes = f"B{status_start + 1}"
+    status_sheet.column_dimensions["A"].width = 24
+    for column in range(2, len(status_headers) + 1):
+        status_sheet.column_dimensions[get_column_letter(column)].width = 14
 
     periods_sheet = workbook.create_sheet("Периоды")
     period_start = write_metadata(periods_sheet, "Подробные данные по периодам")
@@ -160,7 +163,9 @@ def build_results_xlsx(game: Game) -> bytes:
         cell.fill = header_fill
         cell.border = border
         cell.alignment = Alignment(horizontal="center")
-    for code, config in PARAMETERS_CONFIG.items():
+    for code, config in parameter_config.items():
+        if not isinstance(config, dict):
+            config = {"default": config}
         periods_sheet.append(
             [
                 code,
@@ -178,7 +183,7 @@ def build_results_xlsx(game: Game) -> bytes:
     for index in range(3, len(period_headers) + 1):
         periods_sheet.column_dimensions[get_column_letter(index)].width = 14
 
-    for sheet in (summary_sheet, periods_sheet):
+    for sheet in (status_sheet, periods_sheet):
         for row in sheet.iter_rows():
             for cell in row:
                 cell.alignment = Alignment(
@@ -195,152 +200,123 @@ def build_results_xlsx(game: Game) -> bytes:
     return output.getvalue()
 
 
-def _pdf_font_path() -> Path | None:
-    candidates = [
-        settings.BASE_DIR.parent
-        / "frontend"
-        / "static"
-        / "vendor"
-        / "pdfjs"
-        / "standard_fonts"
-        / "LiberationSans-Regular.ttf",
-        settings.BASE_DIR.parent
-        / "frontend"
-        / "static"
-        / "vendor"
-        / "pdfjs"
-        / "standard_fonts"
-        / "LiberationSans-Bold.ttf",
+def build_group_results_xlsx(group: Group) -> bytes:
+    """Build one XLSX workbook with all games for a student group."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    games = list(
+        Game.objects.filter(team__group=group)
+        .select_related("team__group__faculty")
+        .prefetch_related("periods")
+        .order_by("team__name", "id")
+    )
+
+    workbook = Workbook()
+    header_fill = PatternFill("solid", fgColor="DDEAF7")
+    title_fill = PatternFill("solid", fgColor="0F8FCF")
+    header_font = Font(bold=True)
+    title_font = Font(bold=True, color="FFFFFF", size=12)
+    thin = Side(style="thin", color="D1D5DB")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    overview = workbook.active
+    overview.title = "Игры группы"
+    overview.append((f"Игры группы {group.name}",))
+    overview.merge_cells(start_row=1, start_column=1, end_row=1, end_column=11)
+    overview["A1"].fill = title_fill
+    overview["A1"].font = title_font
+    overview["A1"].alignment = Alignment(horizontal="center")
+    overview.append(())
+    headers = [
+        "ID",
+        "Команда",
+        "Статус",
+        "Сложность",
+        "Период",
+        "Конфигурация",
+        "Сводный счёт",
+        "Население",
+        "Продовольствие/чел",
+        "Товары/чел",
+        "Внешний долг",
     ]
-    for path in candidates:
-        if path.exists():
-            return path
-    return None
+    overview.append(headers)
+    for cell in overview[3]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.border = border
+        cell.alignment = Alignment(horizontal="center")
 
+    for game in games:
+        periods = _periods(game)
+        final_period = periods[-1] if periods else game.get_current_period_obj()
+        overview.append(
+            [
+                game.id,
+                game.team.name,
+                game.get_status_display(),
+                game.get_difficulty_display(),
+                f"{game.current_period} / {game.total_periods}",
+                game.config_snapshot_label,
+                _number(_score(final_period)),
+                _number(final_period.P1),
+                _number(final_period.P4),
+                _number(final_period.P6),
+                _number(final_period.TF1),
+            ]
+        )
+        for cell in overview[overview.max_row]:
+            cell.border = border
+            if cell.column >= 7:
+                cell.alignment = Alignment(horizontal="right")
 
-def build_results_pdf(game: Game) -> bytes:
-    """Build a compact PDF version of the final results screen."""
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-    from reportlab.lib.units import mm
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    widths = [10, 28, 16, 16, 14, 20, 16, 16, 20, 16, 16]
+    for index, width in enumerate(widths, start=1):
+        overview.column_dimensions[get_column_letter(index)].width = width
 
-    context = build_export_context(game)
-    periods: list[GamePeriod] = context["periods"]
+    for game in games:
+        periods = _periods(game)
+        if not periods:
+            continue
+        sheet_title = f"{game.id}-{game.team.name}"[:31]
+        sheet = workbook.create_sheet(sheet_title)
+        sheet.append((f"{game.team.name} · игра {game.id}",))
+        sheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=2 + len(periods))
+        sheet["A1"].fill = title_fill
+        sheet["A1"].font = title_font
+        sheet["A1"].alignment = Alignment(horizontal="center")
+        sheet.append(())
+        headers = ["Код", "Название", *[f"Период {p.period_number}" for p in periods]]
+        sheet.append(headers)
+        for cell in sheet[3]:
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.border = border
+            cell.alignment = Alignment(horizontal="center")
 
-    font_name = "Helvetica"
-    font_path = _pdf_font_path()
-    if font_path:
-        pdfmetrics.registerFont(TTFont("StrategemRegular", str(font_path)))
-        font_name = "StrategemRegular"
-
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        "StrategemTitle",
-        parent=styles["Title"],
-        fontName=font_name,
-        fontSize=18,
-        leading=22,
-        spaceAfter=6,
-    )
-    normal_style = ParagraphStyle(
-        "StrategemNormal",
-        parent=styles["Normal"],
-        fontName=font_name,
-        fontSize=9,
-        leading=12,
-    )
+        calculator = get_calculator_for_game(game)
+        for code, config in calculator.get_parameters_config().items():
+            if not isinstance(config, dict):
+                config = {"default": config}
+            sheet.append(
+                [
+                    code,
+                    config.get("verbose_name", code),
+                    *[_number(getattr(period, code, "")) for period in periods],
+                ]
+            )
+            for cell in sheet[sheet.max_row]:
+                cell.border = border
+                if cell.column >= 3:
+                    cell.alignment = Alignment(horizontal="right")
+        sheet.freeze_panes = "C4"
+        sheet.column_dimensions["A"].width = 10
+        sheet.column_dimensions["B"].width = 46
+        for column in range(3, len(headers) + 1):
+            sheet.column_dimensions[get_column_letter(column)].width = 14
 
     output = BytesIO()
-    doc = SimpleDocTemplate(
-        output,
-        pagesize=landscape(A4),
-        rightMargin=14 * mm,
-        leftMargin=14 * mm,
-        topMargin=12 * mm,
-        bottomMargin=12 * mm,
-        title=f"Итоги игры {game.team.name}",
-    )
-
-    story = [
-        Paragraph("Итоги игры", title_style),
-        Paragraph(
-            (
-                f"Команда: {game.team.name}<br/>"
-                f"Группа: {game.team.group.name}<br/>"
-                f"Статус: {game.get_status_display()}<br/>"
-                f"Периоды: {game.current_period} / {game.total_periods}<br/>"
-                f"Сводный счёт: {context['average_score']:.2f}"
-            ),
-            normal_style,
-        ),
-        Spacer(1, 6 * mm),
-    ]
-
-    summary_table = Table(
-        [["Код", "Показатель", "Итоговое значение"], *context["summary"]],
-        colWidths=[22 * mm, 70 * mm, 35 * mm],
-    )
-    summary_table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E5E7EB")),
-                ("FONTNAME", (0, 0), (-1, -1), font_name),
-                ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D1D5DB")),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("ALIGN", (2, 1), (2, -1), "RIGHT"),
-            ]
-        )
-    )
-    story.append(summary_table)
-    story.append(Spacer(1, 6 * mm))
-
-    dynamic_rows = [
-        [
-            "Период",
-            "Население",
-            "Прод./чел",
-            "Товары/чел",
-            "Экология",
-            "Долг",
-            "Смертность",
-            "Рождаемость",
-        ]
-    ]
-    for period in periods:
-        dynamic_rows.append(
-            [
-                period.period_number,
-                round(period.P1),
-                round(period.P4, 2),
-                round(period.P6, 2),
-                f"{period.F7 * 100:.0f}%",
-                round(period.TF1),
-                round(period.P5, 1),
-                round(period.P8, 1),
-            ]
-        )
-
-    dynamic_table = Table(dynamic_rows, repeatRows=1)
-    dynamic_table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E5E7EB")),
-                ("FONTNAME", (0, 0), (-1, -1), font_name),
-                ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D1D5DB")),
-                ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ]
-        )
-    )
-    story.append(Paragraph("Динамика по периодам", normal_style))
-    story.append(Spacer(1, 2 * mm))
-    story.append(dynamic_table)
-
-    doc.build(story)
+    workbook.save(output)
     return output.getvalue()

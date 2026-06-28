@@ -77,7 +77,7 @@ MINISTER_SHORT_NAMES = {
     "trade_finance": "Торговля",
 }
 
-SUMMARY_INFO_PARAMS = ["TF9"]
+SUMMARY_INFO_PARAMS = []
 
 # Parameters shown as context on each minister sheet.
 MINISTER_CONTEXT_PARAMS = {
@@ -127,7 +127,7 @@ MINISTER_CONTEXT_PARAMS = {
         "info": ["F7", "F8", "F9", "F10", "F11", "F12", "F13"],
     },
     "trade_finance": {
-        "info_first": ["TF1", "TF9"],
+        "info_first": ["TF1"],
         "situation": ["TF2", "TF3", "TF4", "TF5", "TF6", "TF7", "TF8"],
         "info": [],
     },
@@ -202,11 +202,16 @@ PARAMETER_TARGETS: dict[str, float] = {
 }
 
 
-def build_decision_structure() -> dict:
+def build_decision_structure(config_data: dict | None = None) -> dict:
     """Return decision metadata for summary and minister sheets."""
-    data_dir = Path(__file__).resolve().parent / "data"
-    with open(data_dir / "decision_order.yaml", "r", encoding="utf-8") as f:
-        order_config = yaml.safe_load(f)
+    if config_data is None:
+        data_dir = Path(__file__).resolve().parent / "data"
+        with open(data_dir / "decision_order.yaml", "r", encoding="utf-8") as f:
+            order_config = yaml.safe_load(f)
+        parameter_config = PARAMETERS_CONFIG
+    else:
+        order_config = config_data.get("decision_order.yaml") or {}
+        parameter_config = _flatten_parameters(config_data.get("parameters.yaml") or {})
 
     auto_calculate_decision_residuals = bool(
         order_config.get("auto_calculate_decision_residuals", True)
@@ -224,9 +229,9 @@ def build_decision_structure() -> dict:
         ministers_config,
         auto_calculate_decision_residuals,
     )
-    parameters = _build_parameters(summary_groups, minister_configs)
+    parameters = _build_parameters(summary_groups, minister_configs, parameter_config)
     for code in SUMMARY_INFO_PARAMS:
-        config = PARAMETERS_CONFIG.get(code, {})
+        config = parameter_config.get(code, {})
         parameters[code] = {
             "verbose_name": config.get("verbose_name", code),
             "default": config.get("default", 0),
@@ -246,6 +251,34 @@ def build_decision_structure() -> dict:
 def _is_team_stage(stage: dict) -> bool:
     """Check whether a stage is filled by the team, not an operator."""
     return stage.get("flow", "team") == "team"
+
+
+def _get_readonly_inputs(stage: dict) -> list[str]:
+    """Return non-editable parameters that should be visible in decision tables."""
+    if _is_team_stage(stage):
+        return []
+    return [
+        inp["param"]
+        for inp in stage.get("inputs", [])
+        if (
+            isinstance(inp, dict)
+            and inp.get("param")
+            and inp.get("controller") == "operator"
+        )
+    ]
+
+
+def _flatten_parameters(parameters_root: dict) -> dict:
+    result = {}
+    for category_name, category in parameters_root.items():
+        if not isinstance(category, dict):
+            continue
+        for param_name, config in category.items():
+            if isinstance(config, dict):
+                result[param_name] = {**config, "category": category_name}
+            else:
+                result[param_name] = config
+    return result
 
 
 def _get_team_inputs(stage: dict, auto_calculate_decision_residuals: bool) -> list[dict]:
@@ -277,26 +310,27 @@ def _build_summary_groups(
     for group_def in SUMMARY_GROUP_DEFS:
         inputs_all = []
         auto_all = []
+        readonly_all = []
         first_minister = None
         stage_names = []
 
         for stage_key in group_def["stages"]:
             stage = stages.get(stage_key, {})
-            if not _is_team_stage(stage):
-                continue
             if first_minister is None:
                 first_minister = stage.get("minister")
             stage_names.append(stage.get("name", stage_key))
-            inputs_all += [
-                inp["param"]
-                for inp in _get_team_inputs(stage, auto_calculate_decision_residuals)
-            ]
-            if auto_calculate_decision_residuals:
+            if _is_team_stage(stage):
+                inputs_all += [
+                    inp["param"]
+                    for inp in _get_team_inputs(stage, auto_calculate_decision_residuals)
+                ]
+            readonly_all += _get_readonly_inputs(stage)
+            if auto_calculate_decision_residuals and _is_team_stage(stage):
                 auto_all += [
                     ac["param"] for ac in stage.get("auto_calculated", [])
                 ]
 
-        if not inputs_all and not auto_all:
+        if not inputs_all and not auto_all and not readonly_all:
             continue
 
         label = group_def["label"] or " / ".join(stage_names)
@@ -307,6 +341,7 @@ def _build_summary_groups(
                 "label": label,
                 "inputs": inputs_all,
                 "auto": auto_all,
+                "readonly": readonly_all,
                 "total": group_def["total"],
             }
         )
@@ -324,13 +359,23 @@ def _build_minister_configs(
     for minister_key, minister_data in ministers_config.items():
         context = MINISTER_CONTEXT_PARAMS.get(minister_key, {})
         decisions = []
+        stage_keys = list(minister_data.get("decisions", []))
+        for stage_key, stage in stages.items():
+            if (
+                stage.get("minister") == minister_key
+                and not _is_team_stage(stage)
+                and stage_key not in stage_keys
+            ):
+                stage_keys.insert(0, stage_key)
 
-        for stage_key in minister_data.get("decisions", []):
+        for stage_key in stage_keys:
             stage = stages.get(stage_key, {})
-            if not _is_team_stage(stage):
-                continue
-
-            team_inputs = _get_team_inputs(stage, auto_calculate_decision_residuals)
+            team_inputs = (
+                _get_team_inputs(stage, auto_calculate_decision_residuals)
+                if _is_team_stage(stage)
+                else []
+            )
+            readonly_inputs = _get_readonly_inputs(stage)
             inputs_with_notes = [
                 {
                     "param": inp["param"],
@@ -346,12 +391,13 @@ def _build_minister_configs(
                     "name": stage.get("name", stage_key),
                     "inputs": [inp["param"] for inp in team_inputs],
                     "inputs_detail": inputs_with_notes,
+                    "readonly": readonly_inputs,
                     "auto": (
                         [
                             ac["param"]
                             for ac in stage.get("auto_calculated", [])
                         ]
-                        if auto_calculate_decision_residuals
+                        if auto_calculate_decision_residuals and _is_team_stage(stage)
                         else []
                     ),
                     "total": next(
@@ -383,22 +429,26 @@ def _build_minister_configs(
 def _build_parameters(
     summary_groups: list[dict],
     minister_configs: dict,
+    parameter_config: dict,
 ) -> dict:
     """Build parameter metadata needed by summary and minister sheets."""
     all_codes: set[str] = set()
     for group in summary_groups:
         all_codes.update(group["inputs"])
         all_codes.update(group["auto"])
+        all_codes.update(group.get("readonly", []))
         if group["total"]:
             all_codes.add(group["total"]["ref"])
 
     for minister_config in minister_configs.values():
         for section in ("info_first", "situation", "info"):
             all_codes.update(minister_config[section])
+        for decision in minister_config.get("decisions", []):
+            all_codes.update(decision.get("readonly", []))
 
     parameters = {}
     for code in all_codes:
-        config = PARAMETERS_CONFIG.get(code, {})
+        config = parameter_config.get(code, {})
         parameters[code] = {
             "verbose_name": config.get("verbose_name", code),
             "default": config.get("default", 0),

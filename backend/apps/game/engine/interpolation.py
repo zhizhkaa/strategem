@@ -23,8 +23,12 @@ class Interpolator:
     _instance: Interpolator | None = None
     _tables: dict = {}
 
-    def __new__(cls) -> "Interpolator":
+    def __new__(cls, tables: dict | None = None) -> "Interpolator":
         """Singleton pattern для кэширования загруженных таблиц."""
+        if tables is not None:
+            instance = super().__new__(cls)
+            instance._tables = tables
+            return instance
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._load_tables()

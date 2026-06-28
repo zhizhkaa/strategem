@@ -8,8 +8,23 @@ function adminPanel() {
             faculties: [],
             groups: [],
             documents: [],
+            configFiles: [],
+            globalSettings: {
+                use_team_passwords: true,
+                auto_calculate_decision_residuals: false,
+                parallel_decision_mode: false,
+            },
+            savingGlobalSettings: {},
             savingTeamPasswords: {},
             showArchivedGames: false,
+            activeAdminView: "management",
+            showGameFilters: false,
+            gameSearch: "",
+            gameFilters: {
+                faculty: [],
+                group: [],
+                status: [],
+            },
 
             // Modal state
             showCreateModal: false,
@@ -130,8 +145,51 @@ function adminPanel() {
                 return this.teams.filter((team) => !team.game_status);
             },
 
+            get filteredGames() {
+                const query = this.normalizeSearch(this.gameSearch);
+                return this.games.filter((game) => {
+                    if (this.gameFilters.faculty.length > 0 && !this.gameFilters.faculty.includes(String(game.faculty_name || ""))) return false;
+                    if (this.gameFilters.group.length > 0 && !this.gameFilters.group.includes(String(game.group_name || ""))) return false;
+                    if (this.gameFilters.status.length > 0 && !this.gameFilters.status.includes(game.status)) return false;
+                    if (!query) return true;
+                    return this.gameSearchText(game).includes(query);
+                });
+            },
+
+            get hasGameFilters() {
+                return Boolean(
+                    this.gameSearch.trim()
+                    || this.gameFilters.faculty.length > 0
+                    || this.gameFilters.group.length > 0
+                    || this.gameFilters.status.length > 0
+                );
+            },
+
+            get gameFacultyOptions() {
+                return this.uniqueGameOption("faculty_name");
+            },
+
+            get gameGroupOptions() {
+                const faculties = this.gameFilters.faculty;
+                const source = faculties.length > 0
+                    ? this.games.filter((game) => faculties.includes(String(game.faculty_name || "")))
+                    : this.games;
+                return this.uniqueValues(source.map((game) => game.group_name));
+            },
+
+            get gameStatusOptions() {
+                return [
+                    { value: "created", label: "Создана" },
+                    { value: "active", label: "Активна" },
+                    { value: "paused", label: "Пауза" },
+                    { value: "finished", label: "Завершена" },
+                ];
+            },
+
             // Lifecycle
             async initialize() {
+                this.syncAdminViewFromHash();
+                window.addEventListener("hashchange", () => this.syncAdminViewFromHash());
                 await this.checkAdmin();
                 if (this.isAdmin) {
                     await Promise.all([
@@ -140,12 +198,29 @@ function adminPanel() {
                         this.loadFaculties(),
                         this.loadGroups(),
                         this.loadDocuments(),
+                        this.loadConfigFiles(),
+                        this.loadGlobalSettings(),
                     ]);
                 }
                 this.loading = false;
             },
 
             // Methods
+            syncAdminViewFromHash() {
+                this.activeAdminView = window.location.hash === "#admin-settings"
+                    ? "settings"
+                    : "management";
+            },
+
+            setAdminView(view) {
+                this.activeAdminView = view;
+                if (view === "settings") {
+                    window.location.hash = "admin-settings";
+                } else {
+                    history.pushState("", document.title, window.location.pathname);
+                }
+            },
+
             async checkAdmin() {
                 try {
                     const response = await API.get("/admin/check/");
@@ -167,6 +242,51 @@ function adminPanel() {
             async setGamesArchiveView(showArchived) {
                 this.showArchivedGames = showArchived;
                 await this.loadGames();
+            },
+
+            normalizeSearch(value) {
+                return String(value || "").trim().toLowerCase();
+            },
+
+            gameSearchText(game) {
+                return this.normalizeSearch([
+                    game.id,
+                    game.team_name,
+                    game.group_name,
+                    game.faculty_name,
+                    game.status,
+                    this.getStatusDisplay(game.status),
+                    game.difficulty,
+                    game.difficulty_display,
+                    this.getDifficultyDisplay(game.difficulty),
+                    game.config_snapshot_label || "Исходная",
+                    game.current_period,
+                    game.total_periods,
+                ].join(" "));
+            },
+
+            uniqueValues(values) {
+                return [...new Set(values.filter(Boolean).map((value) => String(value)))]
+                    .sort((a, b) => a.localeCompare(b, "ru"));
+            },
+
+            uniqueGameOption(field) {
+                return this.uniqueValues(this.games.map((game) => game[field]));
+            },
+
+            resetGameFilters() {
+                this.gameSearch = "";
+                this.gameFilters = {
+                    faculty: [],
+                    group: [],
+                    status: [],
+                };
+            },
+
+            syncGameGroupFilters() {
+                if (this.gameFilters.faculty.length === 0) return;
+                const allowedGroups = new Set(this.gameGroupOptions);
+                this.gameFilters.group = this.gameFilters.group.filter((group) => allowedGroups.has(group));
             },
 
             async loadTeams() {
@@ -206,6 +326,42 @@ function adminPanel() {
                 } catch (e) {
                     showToast("Ошибка загрузки документов: " + e.message, "error");
                 }
+            },
+
+            async loadConfigFiles() {
+                try {
+                    const response = await API.get("/admin/config-files/");
+                    this.configFiles = response.files || [];
+                } catch (e) {
+                    showToast("Ошибка загрузки конфигурационных файлов: " + e.message, "error");
+                }
+            },
+
+            async loadGlobalSettings() {
+                try {
+                    this.globalSettings = await API.get("/admin/settings/");
+                } catch (e) {
+                    showToast("Ошибка загрузки настроек: " + e.message, "error");
+                }
+            },
+
+            async saveGlobalSetting(key) {
+                this.savingGlobalSettings = { ...this.savingGlobalSettings, [key]: true };
+                try {
+                    this.globalSettings = await API.patch("/admin/settings/", {
+                        [key]: this.globalSettings[key],
+                    });
+                    showToast("Настройка сохранена", "success");
+                } catch (e) {
+                    showToast("Ошибка сохранения настройки: " + e.message, "error");
+                    await this.loadGlobalSettings();
+                } finally {
+                    this.savingGlobalSettings = { ...this.savingGlobalSettings, [key]: false };
+                }
+            },
+
+            editConfigFile(file) {
+                window.location.href = `/admin-panel/config/${encodeURIComponent(file.filename)}/`;
             },
 
             openCreateModal() {
@@ -293,12 +449,12 @@ function adminPanel() {
                 }
             },
 
-            exportPdf(game) {
-                window.location.href = `/api/games/${game.id}/export/pdf/`;
-            },
-
             exportExcel(game) {
                 window.location.href = `/api/games/${game.id}/export/excel/`;
+            },
+
+            exportGroupExcel(group) {
+                window.location.href = `/api/groups/${group.id}/export/excel/`;
             },
 
             async openOperatorModal(game) {
@@ -572,7 +728,7 @@ function adminPanel() {
                     name: "",
                     group: "",
                     access_password: "",
-                    password_enabled: true,
+                    password_enabled: Boolean(this.globalSettings.use_team_passwords),
                 };
                 this.showCreateTeamPassword = false;
                 this.createTeamError = null;

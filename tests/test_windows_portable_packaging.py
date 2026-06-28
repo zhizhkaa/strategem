@@ -61,7 +61,11 @@ def test_windows_workflow_builds_exe_artifact() -> None:
     assert "actions/setup-python" in workflow
     assert "requirements-windows-build.txt" in workflow
     assert "Strategem.exe" in workflow
-    assert "Strategem-Windows.zip" in workflow
+    assert "Strategem-Windows.zip" not in workflow
+    assert "changelog:" in workflow
+    assert "release_title:" in workflow
+    assert "RELEASE_TITLE" in workflow
+    assert "--notes-file" in workflow
     assert "gh release upload" in workflow
     assert "actions/upload-artifact" not in workflow
 

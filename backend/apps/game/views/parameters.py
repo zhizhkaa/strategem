@@ -15,7 +15,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ..engine import get_calculator, get_state_manager
+from ..configuration import get_calculator_for_game, get_state_manager_for_game
 from ..engine.state_manager import DecisionState
 from ..models import PARAMETERS_CONFIG, Game, GameStatus
 from ..serializers import (
@@ -76,7 +76,7 @@ class ParameterView(APIView):
         value = getattr(current_period, param, config.get("default", 0))
 
         # Получаем границы
-        calculator = get_calculator()
+        calculator = get_calculator_for_game(game)
         min_val, max_val = calculator.get_parameter_bounds(
             current_period.get_parameters(), param, history
         )
@@ -84,7 +84,7 @@ class ParameterView(APIView):
         # Определяем статус
         decision_state = DecisionState()
         decision_state.from_dict(game.get_decision_states())
-        state_manager = get_state_manager()
+        state_manager = get_state_manager_for_game(game)
         fillable = state_manager._get_fillable_params(
             decision_state,
             params=current_period.get_parameters(),
@@ -175,7 +175,7 @@ class ParameterView(APIView):
         force = bool(request.data.get("force", False))
 
         # Устанавливаем параметр
-        state_manager = get_state_manager()
+        state_manager = get_state_manager_for_game(game)
         is_admin = bool(request.session.get("is_admin", False))
         is_operator_param = state_manager.is_operator_controlled_param(param)
         if force and not is_admin:
@@ -201,7 +201,7 @@ class ParameterView(APIView):
         )
 
         if not success:
-            calculator = get_calculator()
+            calculator = get_calculator_for_game(game)
             min_val, max_val = calculator.get_parameter_bounds(params, param, history)
             return Response(
                 {
@@ -343,8 +343,8 @@ class BatchParameterView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        calculator = get_calculator()
-        state_manager = get_state_manager()
+        calculator = get_calculator_for_game(game)
+        state_manager = get_state_manager_for_game(game)
         current_params = period.get_parameters()
         history = game.get_history()
         fixed_formula_params = self._get_non_team_fixed_decision_formula_params(

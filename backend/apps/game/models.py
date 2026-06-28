@@ -40,6 +40,24 @@ PARAMETERS_CONFIG = get_all_parameters()
 ALLOWED_TOTAL_PERIODS = (10, 12)
 
 
+CONFIG_FILE_CHOICES = (
+    ("parameters.yaml", "Параметры"),
+    ("formulas.yaml", "Формулы"),
+    ("decision_order.yaml", "Порядок решений"),
+    ("difficulties.yaml", "Сложности"),
+    ("interpolation.yaml", "Интерполяция"),
+)
+
+
+def config_data_dir() -> Path:
+    return Path(__file__).parent / "data"
+
+
+def read_builtin_config_file(filename: str) -> str:
+    path = config_data_dir() / filename
+    return path.read_text(encoding="utf-8")
+
+
 class GameStatus(models.TextChoices):
     """Статусы игры."""
 
@@ -148,6 +166,17 @@ class Game(models.Model):
         null=True,
         verbose_name="Дата архивирования",
     )
+    config_snapshot = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Снимок конфигурации",
+        help_text="YAML-конфигурация, с которой игра была начата",
+    )
+    config_snapshot_label = models.CharField(
+        max_length=64,
+        default="Исходная",
+        verbose_name="Версия конфигурации",
+    )
 
     class Meta:
         ordering = ["-created_at"]
@@ -210,15 +239,15 @@ class Game(models.Model):
 
     def _get_period_defaults(self) -> dict[str, Any]:
         """Возвращает значения по умолчанию для нового периода."""
-        from .engine import get_calculator
+        from .configuration import get_calculator_for_game
 
-        return get_calculator().get_initial_parameters(self.difficulty)
+        return get_calculator_for_game(self).get_initial_parameters(self.difficulty)
 
     def _get_period_reset_parameter_names(self) -> set[str]:
         """Параметры решений, которые не переносятся в новый период."""
-        from .engine import get_calculator
+        from .configuration import get_calculator_for_game
 
-        calculator = get_calculator()
+        calculator = get_calculator_for_game(self)
         return set(calculator.get_input_parameters()) | set(
             calculator.get_decision_parameter_names()
         )
@@ -267,7 +296,7 @@ class Game(models.Model):
         Returns:
             True если переход успешен, False если игра завершена
         """
-        from .engine import get_calculator
+        from .configuration import get_calculator_for_game
 
         if self.current_period >= self.total_periods:
             self.status = GameStatus.FINISHED
@@ -285,7 +314,7 @@ class Game(models.Model):
         history = self.get_history()
 
         # Рассчитываем новые параметры
-        calculator = get_calculator()
+        calculator = get_calculator_for_game(self)
         new_params = calculator.calculate_next_period(
             current_params,
             history,
@@ -618,6 +647,58 @@ class Document(models.Model):
         ordering = ["-uploaded_at"]
         verbose_name = "Документ"
         verbose_name_plural = "Документы"
+
+
+class ConfigFile(models.Model):
+    """Переопределённый администратором YAML-файл конфигурации."""
+
+    filename = models.CharField(
+        max_length=64,
+        choices=CONFIG_FILE_CHOICES,
+        unique=True,
+        verbose_name="Файл",
+    )
+    content = models.TextField(verbose_name="Содержимое")
+    version = models.PositiveIntegerField(default=1, verbose_name="Версия")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлено")
+
+    class Meta:
+        ordering = ["filename"]
+        verbose_name = "конфигурационный файл"
+        verbose_name_plural = "Конфигурационные файлы"
+
+    def __str__(self) -> str:
+        return f"{self.filename} v{self.version}"
+
+
+class GlobalGameSettings(models.Model):
+    """Глобальные настройки игрового процесса."""
+
+    use_team_passwords = models.BooleanField(
+        default=True,
+        verbose_name="Использовать пароли команд",
+    )
+    auto_calculate_decision_residuals = models.BooleanField(
+        default=False,
+        verbose_name="Авторасчёт остаточных параметров",
+    )
+    parallel_decision_mode = models.BooleanField(
+        default=False,
+        verbose_name="Параллельный режим решений",
+    )
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлено")
+
+    class Meta:
+        verbose_name = "глобальные настройки игры"
+        verbose_name_plural = "Глобальные настройки игры"
+
+    def __str__(self) -> str:
+        return "Глобальные настройки"
+
+    @classmethod
+    def get_solo(cls) -> "GlobalGameSettings":
+        settings_obj, _ = cls.objects.get_or_create(pk=1)
+        return settings_obj
 
     def __str__(self):
         return self.title

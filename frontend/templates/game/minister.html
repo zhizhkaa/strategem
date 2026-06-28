@@ -278,6 +278,26 @@
                                 </tr>
                             </template>
 
+                            <!-- Read-only params -->
+                            <template x-for="param in (decision.readonly || [])" :key="param">
+                                <tr class="bg-gray-50 border-b border-gray-100">
+                                    <td class="px-2 py-1 sticky left-0 bg-gray-50 border-r border-b border-gray-200">
+                                        <span class="font-mono text-gray-500 text-xs mr-1" x-text="param"></span><span
+                                              class="text-gray-500 text-xs" x-text="getParamVerbose(param)"></span>
+                                    </td>
+                                    <template x-for="col in allPeriodCols" :key="col.period">
+                                        <td
+                                            class="px-2 py-1 text-right font-mono border-r border-gray-100 text-xs"
+                                            :class="col.isCurrent ? 'bg-gray-100 text-gray-600 font-medium' : col.isPast ? 'text-gray-400' : 'text-gray-300'"
+                                        >
+                                            <span x-show="col.isPast" x-text="formatNumber(getPastValue(param, col.period))"></span>
+                                            <span x-show="col.isCurrent" x-text="formatNumber(getParamValue(param))"></span>
+                                            <span x-show="!col.isPast && !col.isCurrent">—</span>
+                                        </td>
+                                    </template>
+                                </tr>
+                            </template>
+
                             <!-- Auto-calculated params -->
                             <template x-for="param in decision.auto" :key="param">
                                 <tr class="bg-gray-50 border-b border-gray-100">

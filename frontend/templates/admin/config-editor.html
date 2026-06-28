@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Стратегема - Редактор конфигурации{% endblock %}
+{% block nav_items %}
+<a href="/admin-panel/" class="hover:bg-strategem-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">Панель администратора</a>
+<a href="/admin-panel/#admin-settings" class="hover:bg-strategem-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">Настройки</a>
+<a href="/" class="hover:bg-strategem-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">Главная</a>
+{% endblock %}
+{% block content %}
+<div
+    x-data="configEditor('{{ filename|escapejs }}')"
+    x-init="initialize()"
+    x-cloak
+    class="space-y-4"
+>
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900" x-text="title || filename"></h1>
+            <p class="text-sm text-gray-500" x-text="filename"></p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+            <button
+                type="button"
+                @click="showHelp = true"
+                class="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 1.96-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                Справка
+            </button>
+            <button
+                type="button"
+                @click="validateConfig()"
+                :disabled="validating || loading"
+                class="inline-flex items-center gap-2 rounded-md border border-strategem-200 bg-strategem-50 px-3 py-2 text-sm font-medium text-strategem-700 hover:bg-strategem-100 disabled:opacity-50"
+            >
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M12 3a9 9 0 100 18 9 9 0 000-18z"/>
+                </svg>
+                Проверить
+            </button>
+            <button
+                type="button"
+                @click="openResetModal()"
+                :disabled="loading"
+                class="inline-flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+            >
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 4h8l4 4v12H6z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 4v4h4"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 15l-2 2 2 2"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 17h5a3 3 0 000-6h-2"/>
+                </svg>
+                Сбросить
+            </button>
+            <button
+                type="button"
+                @click="saveConfig()"
+                :disabled="saving || loading"
+                class="inline-flex items-center gap-2 rounded-md bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:bg-gray-300"
+            >
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+                Сохранить
+            </button>
+        </div>
+    </div>
+
+    <div x-show="loading" class="rounded-md bg-white p-8 text-center text-gray-500 shadow">
+        Загрузка…
+    </div>
+
+    <div x-show="!loading" class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div class="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+            <div class="flex items-center justify-between border-b border-gray-200 px-4 py-2">
+                <div class="text-sm text-gray-600">
+                    <span x-show="isModified" class="text-purple-700">Изменённая версия</span>
+                    <span x-show="!isModified">Исходная версия</span>
+                </div>
+                <div class="text-xs text-gray-500" x-text="lineCount + ' строк'"></div>
+            </div>
+            <div class="config-editor-shell">
+                <div
+                    x-ref="lineGutter"
+                    class="config-line-gutter"
+                    aria-hidden="true"
+                >
+                    <div class="py-3">
+                        <template x-for="line in lineNumbers" :key="line">
+                            <div
+                                class="config-line-number"
+                                :class="errorLines.has(line) ? 'config-line-number-error' : ''"
+                                x-text="line"
+                            ></div>
+                        </template>
+                    </div>
+                </div>
+                <textarea
+                    x-ref="editor"
+                    x-model="content"
+                    @scroll="syncScroll()"
+                    @input="$nextTick(() => syncScroll())"
+                    spellcheck="false"
+                    class="config-code-editor"
+                ></textarea>
+            </div>
+        </div>
+
+        <aside class="space-y-4">
+            <div class="rounded-lg border border-gray-200 bg-white shadow-sm">
+                <div class="border-b border-gray-200 px-4 py-3">
+                    <h2 class="text-sm font-semibold text-gray-900">Проверка</h2>
+                </div>
+                <div class="max-h-[44vh] overflow-y-auto p-4">
+                    <p x-show="!validation" class="text-sm text-gray-500">Проверка ещё не запускалась.</p>
+                    <div x-show="validation">
+                        <p
+                            class="mb-3 text-sm font-medium"
+                            :class="validation?.valid ? 'text-green-700' : 'text-red-700'"
+                            x-text="validation?.valid ? 'Ошибок нет' : 'Найдены ошибки'"
+                        ></p>
+                        <div class="space-y-2">
+                            <template x-for="item in visibleValidationItems" :key="item.filename + ':' + item.line + ':' + item.message">
+                                <button
+                                    type="button"
+                                    @click="goToLine(item.line)"
+                                    class="block w-full rounded-md border px-3 py-2 text-left text-xs"
+                                    :class="item.severity === 'warning' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-red-200 bg-red-50 text-red-800'"
+                                >
+                                    <span class="block font-medium">
+                                        <span x-text="item.filename"></span>
+                                        <span x-show="item.line">:<span x-text="item.line"></span></span>
+                                    </span>
+                                    <span x-text="item.message"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <div
+        x-show="showHelp"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+        style="display: none"
+    >
+        <div class="w-full max-w-2xl rounded-lg bg-white shadow-xl">
+            <div class="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+                <h2 class="text-lg font-semibold text-gray-900">Справка по конфигурации</h2>
+                <button type="button" @click="showHelp = false" class="text-gray-500 hover:text-gray-700">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="space-y-3 px-5 py-4 text-sm text-gray-700">
+                <p>Файлы используют YAML. Отступы задают структуру, табы не применяются.</p>
+                <p><code class="rounded bg-gray-100 px-1 py-0.5">parameters.yaml</code> описывает параметры, значения по умолчанию, границы и признак ввода.</p>
+                <p><code class="rounded bg-gray-100 px-1 py-0.5">formulas.yaml</code> содержит формулы. Доступны функции <code>min</code>, <code>max</code>, <code>round</code>, <code>prev</code>, <code>mean</code>, <code>interpolate</code>, <code>max_loan</code>.</p>
+                <p><code class="rounded bg-gray-100 px-1 py-0.5">decision_order.yaml</code> задаёт этапы решений, министров, порядок расчётов и режимы прохождения.</p>
+                <p><code class="rounded bg-gray-100 px-1 py-0.5">interpolation.yaml</code> хранит таблицы с одинаковой длиной списков <code>x</code> и <code>y</code>.</p>
+                <p>Перед сохранением запускается полная проверка всех конфигурационных файлов.</p>
+            </div>
+        </div>
+    </div>
+
+    <div
+        x-show="showResetModal"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+        style="display: none"
+    >
+        <div class="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+            <h2 class="text-lg font-semibold text-gray-900">Сбросить файл?</h2>
+            <p class="mt-2 text-sm text-gray-600">Файл вернётся к исходной версии из приложения. Новые игры будут использовать исходные настройки этого файла.</p>
+            <div class="mt-5 flex justify-end gap-3">
+                <button type="button" @click="closeResetModal()" class="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Отмена</button>
+                <button
+                    type="button"
+                    @click="resetConfig()"
+                    :disabled="resetCountdown > 0 || resetting"
+                    class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:bg-gray-300"
+                    x-text="resetCountdown > 0 ? 'Сбросить через ' + resetCountdown : 'Сбросить'"
+                ></button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script src="{% static 'js/pages/admin-config-editor.js' %}"></script>
+{% endblock %}

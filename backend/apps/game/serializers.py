@@ -13,8 +13,15 @@ import secrets
 from apps.management.models import Faculty, Group, Team
 from rest_framework import serializers
 
-from .engine import get_calculator
-from .models import ALLOWED_TOTAL_PERIODS, Game, GameDifficulty, GamePeriod, GameStatus
+from .configuration import get_calculator_for_game, get_config_label, get_game_config_snapshot
+from .models import (
+    ALLOWED_TOTAL_PERIODS,
+    Game,
+    GameDifficulty,
+    GamePeriod,
+    GameStatus,
+    GlobalGameSettings,
+)
 
 MIN_TEAM_PASSWORD_LENGTH = 6
 
@@ -184,7 +191,10 @@ class TeamCreateSerializer(serializers.ModelSerializer):
         return validate_team_access_password(value)
 
     def create(self, validated_data: dict) -> Team:
-        password_enabled = validated_data.pop("password_enabled", True)
+        password_enabled = validated_data.pop(
+            "password_enabled",
+            GlobalGameSettings.get_solo().use_team_passwords,
+        )
         if password_enabled is False:
             validated_data["access_password"] = ""
         return super().create(validated_data)
@@ -231,6 +241,7 @@ class GameListSerializer(serializers.ModelSerializer):
             "is_archived",
             "archived_at",
             "finished_at",
+            "config_snapshot_label",
             "created_at",
             "updated_at",
         ]
@@ -274,10 +285,12 @@ class GameCreateSerializer(serializers.ModelSerializer):
         game = Game.objects.create(
             **validated_data,
             status=GameStatus.ACTIVE,
+            config_snapshot=get_game_config_snapshot(),
+            config_snapshot_label=get_config_label(),
         )
 
         # Создаём первый период с параметрами по умолчанию
-        calculator = get_calculator()
+        calculator = get_calculator_for_game(game)
         default_params = calculator.get_initial_parameters(game.difficulty)
 
         GamePeriod.objects.create(
@@ -321,6 +334,7 @@ class GameDetailSerializer(serializers.ModelSerializer):
             "is_archived",
             "archived_at",
             "finished_at",
+            "config_snapshot_label",
             "decision_states",
             "can_advance_period",
             "created_at",

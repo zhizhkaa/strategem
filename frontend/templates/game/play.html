@@ -229,6 +229,25 @@
                                 </tr>
                             </template>
 
+                            <!-- Read-only param rows -->
+                            <template x-for="param in (group.readonly || [])" :key="param">
+                                <tr class="bg-gray-50 border-b border-gray-100">
+                                    <td class="px-2 py-1 sticky left-0 bg-gray-50 border-r border-gray-200">
+                                        <span class="font-mono text-gray-500 text-xs mr-1" x-text="param"></span><span
+                                              class="text-gray-500 text-xs"
+                                              x-text="PARAM_VERBOSE[param] || param"></span>
+                                    </td>
+                                    <template x-for="col in allPeriodCols" :key="col.period">
+                                        <td class="px-1 py-1 text-right font-mono text-xs border-r border-gray-100"
+                                            :class="col.isCurrent ? 'bg-gray-100 text-gray-700 font-medium' : col.isPast ? 'text-gray-500' : 'text-gray-300'">
+                                            <span x-show="col.isPast"  x-text="formatNum(getPastVal(param, col.period))"></span>
+                                            <span x-show="col.isCurrent" x-text="formatNum(getVal(param))"></span>
+                                            <span x-show="!col.isPast && !col.isCurrent">—</span>
+                                        </td>
+                                    </template>
+                                </tr>
+                            </template>
+
                             <!-- Auto-calculated param rows -->
                             <template x-for="param in group.auto" :key="param">
                                 <tr class="bg-gray-50 border-b border-gray-100">

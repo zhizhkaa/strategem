@@ -12,6 +12,7 @@ function docsApp() {
         ministerConfig: null,
         ministers: {},
         interpolationTables: {},
+        gameId: null,
         _pdfRenderToken: 0,
 
         get visibleDocs() {
@@ -45,12 +46,14 @@ function docsApp() {
         async init() {
             const params = new URLSearchParams(window.location.search);
             this.ministerKey = params.get('minister') || null;
+            this.gameId = localStorage.getItem('strategem_game');
+            const gameQuery = this.gameId ? `?game_id=${encodeURIComponent(this.gameId)}` : '';
 
             try {
                 const [docsData, interpolationData, structureData] = await Promise.all([
                     API.get('/documents/?include_builtin=1'),
-                    API.get('/games/interpolation-tables/'),
-                    API.get('/games/decision-structure/'),
+                    API.get(`/games/interpolation-tables/${gameQuery}`),
+                    API.get(`/games/decision-structure/${gameQuery}`),
                 ]);
                 this.documents = docsData.documents || [];
                 this.interpolationTables = interpolationData || {};

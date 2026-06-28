@@ -2,7 +2,12 @@
 {% load static %}
 {% block title %}Стратегема - Панель администратора{% endblock %}
 {% block nav_items %}
-<span class="text-strategem-200 text-sm">Администратор</span>
+<a
+    href="/admin-panel/"
+    class="hover:bg-strategem-600 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+>
+    Панель администратора
+</a>
 <a
     href="/"
     class="hover:bg-strategem-600 px-3 py-2 rounded-md text-sm font-medium transition-colors"
@@ -10,11 +15,10 @@
     Главная
 </a>
 <a
-    href="/api/docs/"
-    target="_blank"
+    href="/admin-panel/#admin-settings"
     class="hover:bg-strategem-600 px-3 py-2 rounded-md text-sm font-medium transition-colors"
 >
-    API Docs
+    Настройки
 </a>
 <button
     type="button"
@@ -83,6 +87,7 @@
 
     <!-- Admin Panel Content -->
     <div x-show="!loading && isAdmin">
+        <div x-show="activeAdminView === 'management'" class="space-y-6">
         <!-- Header -->
         <div class="flex items-center justify-between mb-6">
             <div>
@@ -92,6 +97,32 @@
                 <p class="text-gray-600">Управление играми и командами</p>
             </div>
             <div class="flex items-center space-x-3">
+                <a
+                    href="#admin-settings"
+                    @click.prevent="setAdminView('settings')"
+                    class="px-4 py-2 bg-slate-600 text-white font-medium rounded-md shadow-sm hover:bg-slate-700 transition-colors flex items-center"
+                >
+                    <svg
+                        class="w-5 h-5 mr-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.89 3.31.877 2.42 2.42a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.89 1.543-.877 3.31-2.42 2.42a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.89-3.31-.877-2.42-2.42a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.89-1.543.877-3.31 2.42-2.42.996.575 2.25.035 2.572-1.065z"
+                        />
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
+                    </svg>
+                    Настройки
+                </a>
                 <button
                     @click="openCreateFacultyModal()"
                     class="px-4 py-2 bg-purple-600 text-white font-medium rounded-md shadow-sm hover:bg-purple-700 transition-colors flex items-center"
@@ -176,32 +207,32 @@
             <div class="bg-white rounded-lg shadow-md p-4">
                 <p
                     class="text-sm text-gray-500"
-                    x-text="showArchivedGames ? 'В архиве' : 'Текущих игр'"
+                    x-text="showArchivedGames ? 'В архиве найдено' : 'Текущих игр найдено'"
                 ></p>
                 <p
                     class="text-2xl font-bold text-gray-900"
-                    x-text="games.length"
+                    x-text="filteredGames.length"
                 ></p>
             </div>
             <div class="bg-white rounded-lg shadow-md p-4">
                 <p class="text-sm text-gray-500">Активных</p>
                 <p
                     class="text-2xl font-bold text-green-600"
-                    x-text="games.filter(g => g.status === 'active').length"
+                    x-text="filteredGames.filter(g => g.status === 'active').length"
                 ></p>
             </div>
             <div class="bg-white rounded-lg shadow-md p-4">
                 <p class="text-sm text-gray-500">Завершённых</p>
                 <p
                     class="text-2xl font-bold text-blue-600"
-                    x-text="games.filter(g => g.status === 'finished').length"
+                    x-text="filteredGames.filter(g => g.status === 'finished').length"
                 ></p>
             </div>
             <div class="bg-white rounded-lg shadow-md p-4">
                 <p class="text-sm text-gray-500">На паузе</p>
                 <p
                     class="text-2xl font-bold text-yellow-600"
-                    x-text="games.filter(g => g.status === 'paused').length"
+                    x-text="filteredGames.filter(g => g.status === 'paused').length"
                 ></p>
             </div>
         </div>
@@ -216,6 +247,11 @@
                         class="font-semibold text-gray-900"
                         x-text="showArchivedGames ? 'Архив игр' : 'Игры'"
                     ></h2>
+                    <p
+                        x-show="games.length > 0"
+                        class="mt-0.5 text-xs text-gray-500"
+                        x-text="'Показано ' + filteredGames.length + ' из ' + games.length"
+                    ></p>
                 </div>
                 <div class="flex flex-1 items-center justify-between gap-2">
                     <div class="inline-flex rounded-md border border-gray-300 overflow-hidden">
@@ -259,6 +295,100 @@
             </div>
 
             <div
+                x-show="games.length > 0"
+                class="border-b border-gray-100 bg-gray-50 px-4 py-3"
+            >
+                <div class="flex flex-col gap-2 md:flex-row md:items-end">
+                    <div class="flex-1">
+                        <label class="mb-1 block text-xs font-medium text-gray-600">Поиск</label>
+                        <input
+                            type="search"
+                            x-model.debounce.250ms="gameSearch"
+                            placeholder="Команда, факультет, группа, статус, ID"
+                            class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-strategem-400 focus:outline-none focus:ring-1 focus:ring-strategem-400"
+                        />
+                    </div>
+                    <button
+                        type="button"
+                        @click="showGameFilters = !showGameFilters"
+                        class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                        <span x-text="showGameFilters ? 'Скрыть фильтры' : 'Фильтры'"></span>
+                        <span
+                            x-show="gameFilters.faculty.length + gameFilters.group.length + gameFilters.status.length > 0"
+                            class="ml-1 rounded-full bg-strategem-100 px-1.5 py-0.5 text-xs text-strategem-700"
+                            x-text="gameFilters.faculty.length + gameFilters.group.length + gameFilters.status.length"
+                        ></span>
+                    </button>
+                    <button
+                        type="button"
+                        x-show="hasGameFilters"
+                        @click="resetGameFilters()"
+                        class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                        Сбросить фильтры
+                    </button>
+                </div>
+                <div
+                    x-show="showGameFilters"
+                    class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3"
+                    style="display: none"
+                >
+                    <div class="rounded-md border border-gray-200 bg-white p-3">
+                        <p class="mb-2 text-xs font-semibold uppercase text-gray-500">Факультет</p>
+                        <div class="max-h-40 space-y-1 overflow-y-auto">
+                            <template x-for="faculty in gameFacultyOptions" :key="faculty">
+                                <label class="flex items-center gap-2 text-sm text-gray-700">
+                                    <input
+                                        type="checkbox"
+                                        :value="faculty"
+                                        x-model="gameFilters.faculty"
+                                        @change="syncGameGroupFilters()"
+                                        class="h-4 w-4 rounded border-gray-300 text-strategem-600 focus:ring-strategem-500"
+                                    />
+                                    <span x-text="faculty"></span>
+                                </label>
+                            </template>
+                            <p x-show="gameFacultyOptions.length === 0" class="text-sm text-gray-400">Нет значений</p>
+                        </div>
+                    </div>
+                    <div class="rounded-md border border-gray-200 bg-white p-3">
+                        <p class="mb-2 text-xs font-semibold uppercase text-gray-500">Группа</p>
+                        <div class="max-h-40 space-y-1 overflow-y-auto">
+                            <template x-for="group in gameGroupOptions" :key="group">
+                                <label class="flex items-center gap-2 text-sm text-gray-700">
+                                    <input
+                                        type="checkbox"
+                                        :value="group"
+                                        x-model="gameFilters.group"
+                                        class="h-4 w-4 rounded border-gray-300 text-strategem-600 focus:ring-strategem-500"
+                                    />
+                                    <span x-text="group"></span>
+                                </label>
+                            </template>
+                            <p x-show="gameGroupOptions.length === 0" class="text-sm text-gray-400">Нет значений</p>
+                        </div>
+                    </div>
+                    <div class="rounded-md border border-gray-200 bg-white p-3">
+                        <p class="mb-2 text-xs font-semibold uppercase text-gray-500">Статус</p>
+                        <div class="space-y-1">
+                            <template x-for="statusOption in gameStatusOptions" :key="statusOption.value">
+                                <label class="flex items-center gap-2 text-sm text-gray-700">
+                                    <input
+                                        type="checkbox"
+                                        :value="statusOption.value"
+                                        x-model="gameFilters.status"
+                                        class="h-4 w-4 rounded border-gray-300 text-strategem-600 focus:ring-strategem-500"
+                                    />
+                                    <span x-text="statusOption.label"></span>
+                                </label>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div
                 x-show="games.length === 0"
                 class="p-8 text-center text-gray-500"
             >
@@ -285,7 +415,22 @@
                 </button>
             </div>
 
-            <div x-show="games.length > 0" class="overflow-x-auto">
+            <div
+                x-show="games.length > 0 && filteredGames.length === 0"
+                class="p-8 text-center text-gray-500"
+            >
+                <p>По заданным фильтрам игр не найдено</p>
+                <button
+                    type="button"
+                    x-show="hasGameFilters"
+                    @click="resetGameFilters()"
+                    class="mt-4 text-strategem-600 hover:underline"
+                >
+                    Сбросить фильтры
+                </button>
+            </div>
+
+            <div x-show="filteredGames.length > 0" class="overflow-x-auto">
                 <table class="w-full">
                     <thead class="bg-gray-50">
                         <tr>
@@ -337,7 +482,7 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-200">
-                        <template x-for="game in games" :key="game.id">
+                        <template x-for="game in filteredGames" :key="game.id">
                             <tr class="hover:bg-gray-50">
                                 <td
                                     class="px-4 py-3 text-sm text-gray-900"
@@ -355,9 +500,10 @@
                                     class="px-4 py-3 text-sm text-gray-600"
                                     x-text="game.faculty_name || '—'"
                                 ></td>
-                                <td class="px-4 py-3">
+                                <td class="px-4 py-3 min-w-[170px]">
+                                    <div class="flex flex-wrap items-center gap-1">
                                     <span
-                                        class="px-2 py-1 text-xs rounded-full"
+                                        class="px-2 py-1 text-xs rounded-full whitespace-nowrap"
                                         :class="{
                                               'bg-green-100 text-green-700': game.status === 'active',
                                               'bg-blue-100 text-blue-700': game.status === 'finished',
@@ -368,10 +514,16 @@
                                     ></span>
                                     <span
                                         x-show="game.is_archived"
-                                        class="ml-1 px-2 py-1 text-xs rounded-full bg-slate-100 text-slate-700"
+                                        class="px-2 py-1 text-xs rounded-full bg-slate-100 text-slate-700 whitespace-nowrap"
                                     >
                                         Архив
                                     </span>
+                                    <span
+                                        class="px-2 py-1 text-xs rounded-full whitespace-nowrap"
+                                        :class="game.config_snapshot_label && game.config_snapshot_label !== 'Исходная' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700'"
+                                        x-text="game.config_snapshot_label || 'Исходная'"
+                                    ></span>
+                                    </div>
                                 </td>
                                 <td class="px-4 py-3 text-sm text-gray-600">
                                     <span
@@ -490,15 +642,6 @@
                                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                                                     </svg>
                                                     <span>Возобновить</span>
-                                                </button>
-                                                <button
-                                                    @click="$el.closest('details').open = false; exportPdf(game)"
-                                                    class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-                                                >
-                                                    <svg class="h-4 w-4 flex-none text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m-8 8h10a2 2 0 002-2V7.828a2 2 0 00-.586-1.414l-3.828-3.828A2 2 0 0013.172 2H7a2 2 0 00-2 2v15a2 2 0 002 2z"/>
-                                                    </svg>
-                                                    <span>Скачать PDF</span>
                                                 </button>
                                                 <button
                                                     @click="$el.closest('details').open = false; exportExcel(game)"
@@ -713,15 +856,26 @@
                                                 <span class="text-gray-400 font-normal ml-1" x-text="'(' + group.year + ')'"></span>
                                             </span>
                                         </button>
-                                        <button
-                                            @click="confirmDeleteEntity('group', group.id, group.name)"
-                                            class="text-red-400 hover:text-red-600 p-0.5"
-                                            title="Удалить группу"
-                                        >
-                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                                            </svg>
-                                        </button>
+                                        <div class="flex items-center gap-1">
+                                            <button
+                                                @click="exportGroupExcel(group)"
+                                                class="text-emerald-500 hover:text-emerald-700 p-0.5"
+                                                title="Скачать Excel по группе"
+                                            >
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-6m4 6V7m4 10v-4M5 21h14a2 2 0 002-2V7.828a2 2 0 00-.586-1.414l-3.828-3.828A2 2 0 0015.172 2H5a2 2 0 00-2 2v15a2 2 0 002 2z"/>
+                                                </svg>
+                                            </button>
+                                            <button
+                                                @click="confirmDeleteEntity('group', group.id, group.name)"
+                                                class="text-red-400 hover:text-red-600 p-0.5"
+                                                title="Удалить группу"
+                                            >
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                                </svg>
+                                            </button>
+                                        </div>
                                     </div>
                                     <!-- Teams in this group -->
                                     <template x-for="team in teamsFiltered(group.id)" :key="team.id">
@@ -774,9 +928,114 @@
                 </div>
             </div>
         </div>
+        </div>
+
+        <div id="admin-settings" x-show="activeAdminView === 'settings'" class="space-y-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">Настройки</h1>
+                <p class="text-gray-600">Конфигурация приложения и документы для игроков</p>
+            </div>
+            <a
+                href="/admin-panel/"
+                @click.prevent="setAdminView('management')"
+                class="px-4 py-2 bg-white border border-gray-300 text-gray-700 font-medium rounded-md shadow-sm hover:bg-gray-50 transition-colors"
+            >
+                Панель администратора
+            </a>
+        </div>
+        <!-- Settings Section -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="px-4 py-3 border-b border-gray-200">
+                <h2 class="font-semibold text-gray-900">Настройки</h2>
+            </div>
+            <div class="p-4 space-y-6">
+                <div>
+                    <h3 class="text-sm font-semibold text-gray-900 mb-3">Глобальные параметры</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <label class="flex items-start gap-3 rounded-md border border-gray-200 px-3 py-3">
+                            <input
+                                type="checkbox"
+                                x-model="globalSettings.use_team_passwords"
+                                @change="saveGlobalSetting('use_team_passwords')"
+                                class="mt-1 h-4 w-4 rounded border-gray-300 text-strategem-600 focus:ring-strategem-500"
+                            />
+                            <span>
+                                <span class="block text-sm font-medium text-gray-900">Использовать пароли</span>
+                                <span class="block text-xs text-gray-500">Команды входят по паролю, если он задан.</span>
+                            </span>
+                        </label>
+                        <label class="flex items-start gap-3 rounded-md border border-gray-200 px-3 py-3">
+                            <input
+                                type="checkbox"
+                                x-model="globalSettings.auto_calculate_decision_residuals"
+                                @change="saveGlobalSetting('auto_calculate_decision_residuals')"
+                                class="mt-1 h-4 w-4 rounded border-gray-300 text-strategem-600 focus:ring-strategem-500"
+                            />
+                            <span>
+                                <span class="block text-sm font-medium text-gray-900">Авторасчёт параметров</span>
+                                <span class="block text-xs text-gray-500">Остаточные параметры решений рассчитываются автоматически.</span>
+                            </span>
+                        </label>
+                        <label class="flex items-start gap-3 rounded-md border border-gray-200 px-3 py-3">
+                            <input
+                                type="checkbox"
+                                x-model="globalSettings.parallel_decision_mode"
+                                @change="saveGlobalSetting('parallel_decision_mode')"
+                                class="mt-1 h-4 w-4 rounded border-gray-300 text-strategem-600 focus:ring-strategem-500"
+                            />
+                            <span>
+                                <span class="block text-sm font-medium text-gray-900">Параллельные решения</span>
+                                <span class="block text-xs text-gray-500">Этапы решений доступны без последовательных блокировок.</span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-semibold text-gray-900">Конфигурационные файлы</h3>
+                        <button
+                            type="button"
+                            @click="loadConfigFiles()"
+                            class="text-sm text-strategem-600 hover:text-strategem-700"
+                        >
+                            Обновить
+                        </button>
+                    </div>
+                    <div x-show="configFiles.length === 0" class="text-sm text-gray-500">
+                        Файлы не найдены
+                    </div>
+                    <div x-show="configFiles.length > 0" class="divide-y divide-gray-100 rounded-md border border-gray-200">
+                        <template x-for="file in configFiles" :key="file.filename">
+                            <div class="flex items-center justify-between gap-3 px-3 py-3">
+                                <div class="min-w-0">
+                                    <p class="text-sm font-medium text-gray-900" x-text="file.title"></p>
+                                    <p class="text-xs text-gray-500">
+                                        <span x-text="file.filename"></span>
+                                        <span x-show="file.is_modified"> · изменён · v<span x-text="file.version"></span></span>
+                                        <span x-show="!file.is_modified"> · исходный</span>
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    @click="editConfigFile(file)"
+                                    class="inline-flex h-8 w-8 items-center justify-center rounded-md text-strategem-600 hover:bg-strategem-50 hover:text-strategem-700"
+                                    title="Редактировать"
+                                >
+                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536M4 20h4.586a1 1 0 00.707-.293l10-10a2.5 2.5 0 00-3.536-3.536l-10 10A1 1 0 005.464 16.878L4 20z"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Documents Section -->
-        <div class="mt-6 bg-white rounded-lg shadow-md overflow-hidden">
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
             <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                 <h2 class="font-semibold text-gray-900">Документы для игроков</h2>
                 <button
@@ -828,6 +1087,7 @@
                     </div>
                 </template>
             </div>
+        </div>
         </div>
     </div>
 

@@ -17,10 +17,14 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from ..engine import get_calculator, get_state_manager
+from ..configuration import (
+    get_calculator_for_game,
+    get_game_config_data,
+    get_state_manager_for_game,
+)
 from ..engine.interpolation import Interpolator
 from ..engine.state_manager import DecisionState
-from ..exports import build_results_pdf, build_results_xlsx
+from ..exports import build_results_xlsx
 from ..models import PARAMETERS_CONFIG, Game, GamePeriod, GameStatus
 from ..decision_structure import build_decision_structure
 from ..serializers import (
@@ -201,21 +205,6 @@ class GameViewSet(viewsets.ModelViewSet):
         return response
 
     @extend_schema(
-        summary="Экспорт итогов игры в PDF",
-        description="Скачивает компактный PDF с итоговым экраном игры.",
-        responses={200: OpenApiResponse(description="PDF-файл")},
-    )
-    @action(detail=True, methods=["get"], url_path="export/pdf")
-    def export_pdf(self, request: Request, pk=None) -> HttpResponse:
-        game = self.get_object()
-        filename = f"strategem-game-{game.id}-results.pdf"
-        return self._export_response(
-            build_results_pdf(game),
-            filename,
-            "application/pdf",
-        )
-
-    @extend_schema(
         summary="Экспорт итогов игры в Excel",
         description="Скачивает XLSX с подробными данными по всем периодам.",
         responses={200: OpenApiResponse(description="XLSX-файл")},
@@ -257,7 +246,7 @@ class GameViewSet(viewsets.ModelViewSet):
         decision_state.from_dict(game.get_decision_states())
 
         # Получаем полное состояние
-        state_manager = get_state_manager()
+        state_manager = get_state_manager_for_game(game)
         full_state = state_manager.get_full_state(
             params=current_period.get_parameters(),
             decision_state=decision_state,
@@ -292,7 +281,7 @@ class GameViewSet(viewsets.ModelViewSet):
         current_period = game.get_current_period_obj()
         history = game.get_history()
 
-        calculator = get_calculator()
+        calculator = get_calculator_for_game(game)
         details = calculator.get_calculations_detail(
             current_params=current_period.get_parameters(),
             history=history,
@@ -322,10 +311,10 @@ class GameViewSet(viewsets.ModelViewSet):
         current_period = game.get_current_period_obj()
         history = game.get_history()
         params = current_period.get_parameters()
-        calculator = get_calculator()
+        calculator = get_calculator_for_game(game)
         decision_state = DecisionState()
         decision_state.from_dict(game.get_decision_states())
-        state_manager = get_state_manager()
+        state_manager = get_state_manager_for_game(game)
 
         error_params = []
         residual_error_params = set(
@@ -545,8 +534,8 @@ class GameViewSet(viewsets.ModelViewSet):
         history = game.get_history()
         params = current_period.get_parameters()
 
-        calculator = get_calculator()
-        state_manager = get_state_manager()
+        calculator = get_calculator_for_game(game)
+        state_manager = get_state_manager_for_game(game)
         decision_state = DecisionState()
         decision_state.from_dict(game.get_decision_states())
 
@@ -666,7 +655,16 @@ class GameViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="interpolation-tables")
     def interpolation_tables(self, request: Request) -> Response:
         """Возвращает все таблицы интерполяции."""
+        game_id = request.query_params.get("game_id")
         interp = Interpolator()
+        if game_id:
+            try:
+                game = Game.objects.get(pk=int(game_id))
+                config_data = get_game_config_data(game)
+                if config_data is not None:
+                    interp = Interpolator(tables=config_data.get("interpolation.yaml") or {})
+            except (Game.DoesNotExist, ValueError):
+                pass
         result = {}
         for name in interp.get_table_names():
             table = interp.get_table(name)
@@ -690,6 +688,15 @@ class GameViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="decision-structure")
     def decision_structure(self, request: Request) -> Response:
         """Возвращает полную структуру принятия решений из YAML-конфигов."""
+        game_id = request.query_params.get("game_id")
+        if game_id:
+            try:
+                game = Game.objects.get(pk=int(game_id))
+                config_data = get_game_config_data(game)
+                if config_data is not None:
+                    return Response(build_decision_structure(config_data=config_data))
+            except (Game.DoesNotExist, ValueError):
+                pass
         return Response(build_decision_structure())
 
     @extend_schema(

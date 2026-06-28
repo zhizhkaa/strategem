@@ -41,6 +41,14 @@ def admin_panel_view(request):
 
 
 @ensure_csrf_cookie
+def admin_config_editor_view(request, filename):
+    """Редактор конфигурационного YAML-файла."""
+    if not request.session.get("is_admin", False):
+        return HttpResponseForbidden("Доступно только администратору")
+    return render(request, "admin/config-editor.html", {"filename": filename})
+
+
+@ensure_csrf_cookie
 def admin_login_view(request):
     """Вход администратора."""
     return render(request, "admin/login.html")
@@ -126,6 +134,11 @@ urlpatterns = [
     path("game/", game_view, name="game"),
     # Панель администратора
     path("admin-panel/", admin_panel_view, name="admin-panel"),
+    path(
+        "admin-panel/config/<str:filename>/",
+        admin_config_editor_view,
+        name="admin-config-editor",
+    ),
     # Калькулятор (отладочная страница)
     path("admin-panel/calculator/", calculator_page, name="calculator-page"),
     # Вход администратора

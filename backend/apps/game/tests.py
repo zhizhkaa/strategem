@@ -1,7 +1,6 @@
 """Regression tests for game API, formulas, models, and frontend assets."""
 
 import json
-import importlib.util
 import tempfile
 from io import BytesIO
 from pathlib import Path
@@ -196,24 +195,37 @@ class GameApiTests(APITestCase):
         )
         self.assertTrue(response.content.startswith(b"PK"))
         workbook = load_workbook(BytesIO(response.content), read_only=True)
-        self.assertEqual(workbook.sheetnames, ["Сводные итоги", "Периоды"])
+        self.assertEqual(workbook.sheetnames, ["Состояние страны", "Периоды"])
+        self.assertEqual(workbook["Состояние страны"]["A11"].value, "Показатель")
+        self.assertEqual(workbook["Состояние страны"]["B11"].value, "Период 1")
+        self.assertEqual(workbook["Состояние страны"]["A12"].value, "Сводный счёт")
+        self.assertIsNone(workbook["Состояние страны"]["D11"].value)
         self.assertEqual(workbook["Периоды"]["A11"].value, "Код")
         self.assertEqual(workbook["Периоды"]["C11"].value, "Период 1")
-        self.assertEqual(workbook["Сводные итоги"]["A11"].value, "Показатель")
-        self.assertEqual(workbook["Сводные итоги"]["B11"].value, "Период 1")
-        self.assertEqual(workbook["Сводные итоги"]["A12"].value, "Сводный счёт")
 
-    def test_game_pdf_export_returns_pdf_when_reportlab_is_installed(self):
-        if importlib.util.find_spec("reportlab") is None:
-            self.skipTest("reportlab is not installed in the current environment")
-
+    def test_game_pdf_export_is_removed(self):
         game = self._create_game()
 
         response = self.client.get(f"/api/games/{game.id}/export/pdf/")
 
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_group_excel_export_returns_workbook(self):
+        from openpyxl import load_workbook
+
+        game = self._create_game()
+
+        response = self.client.get(f"/api/groups/{game.team.group_id}/export/excel/")
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response["Content-Type"], "application/pdf")
-        self.assertTrue(response.content.startswith(b"%PDF"))
+        self.assertEqual(
+            response["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        workbook = load_workbook(BytesIO(response.content), read_only=True)
+        self.assertEqual(workbook.sheetnames[0], "Игры группы")
+        self.assertEqual(workbook["Игры группы"]["A3"].value, "ID")
+        self.assertEqual(workbook["Игры группы"]["B4"].value, game.team.name)
 
     def test_rejects_unsupported_15_periods(self):
         team = self._create_team()
@@ -1534,6 +1546,16 @@ class GameApiTests(APITestCase):
             for decision in response.data["ministers"]["trade_finance"]["decisions"]
             for param in decision["inputs"]
         }
+        trade_finance_readonly = {
+            param
+            for decision in response.data["ministers"]["trade_finance"]["decisions"]
+            for param in decision.get("readonly", [])
+        }
+        summary_readonly = {
+            param
+            for group in response.data["summary_groups"]
+            for param in group.get("readonly", [])
+        }
         trade_finance_decision_keys = {
             decision["key"]
             for decision in response.data["ministers"]["trade_finance"]["decisions"]
@@ -1542,10 +1564,15 @@ class GameApiTests(APITestCase):
 
         self.assertNotIn("TF9", summary_inputs)
         self.assertNotIn("TF9", trade_finance_inputs)
-        self.assertNotIn("currency_revenue", trade_finance_decision_keys)
-        self.assertNotIn(6, group_numbers)
-        self.assertEqual(response.data["summary_info"], ["TF9"])
-        self.assertIn("TF9", response.data["ministers"]["trade_finance"]["info_first"])
+        self.assertIn("TF9", summary_readonly)
+        self.assertNotIn("TF10", summary_readonly)
+        self.assertNotIn("TF11", summary_readonly)
+        self.assertNotIn("TF12", summary_readonly)
+        self.assertIn("TF9", trade_finance_readonly)
+        self.assertIn("currency_revenue", trade_finance_decision_keys)
+        self.assertIn(6, group_numbers)
+        self.assertEqual(response.data["summary_info"], [])
+        self.assertNotIn("TF9", response.data["ministers"]["trade_finance"]["info_first"])
         self.assertIn("TF9", response.data["parameters"])
         self.assertNotIn("summary_situation", response.data)
         self.assertNotIn("TF10", response.data["summary_info"])
@@ -2244,7 +2271,8 @@ class FrontendAssetTests(TestCase):
         self.assertNotIn('x-show="SUMMARY_INFO.length > 0"', play_template)
         self.assertNotIn("SUMMARY_SITUATION", game_play_js)
         self.assertNotIn("Ситуация периода", play_template)
-        self.assertNotIn("group.readonly || []", play_template)
+        self.assertIn("group.readonly || []", play_template)
+        self.assertNotIn("только чтение", play_template)
 
     def test_batch_http_errors_preserve_field_highlighting(self):
         app_js = self.read_text("frontend/static/js/app.js")
@@ -2316,13 +2344,28 @@ class FrontendAssetTests(TestCase):
         self.assertIn('type="text"', admin_template)
         self.assertIn("access_password: \"\"", admin_js)
         self.assertIn("logoutAdmin", admin_template)
-        self.assertIn('href="/api/docs/"', admin_template)
+        self.assertIn('href="/admin-panel/#admin-settings"', admin_template)
+        self.assertIn("activeAdminView", admin_js + admin_template)
+        self.assertIn('x-show="activeAdminView === \'management\'"', admin_template)
+        self.assertIn('x-show="activeAdminView === \'settings\'"', admin_template)
         self.assertNotIn("API Docs", base_template)
         self.assertIn('x-init="initialize()"', admin_template)
         self.assertIn("async initialize()", admin_js)
         self.assertNotIn("async init()", admin_js)
         self.assertIn('x-show="game.status !== \'finished\'"', admin_template)
         self.assertIn('x-show="game.status === \'finished\'"', admin_template)
+        self.assertIn("gameSearch", admin_js + admin_template)
+        self.assertIn("gameFilters", admin_js + admin_template)
+        self.assertIn("filteredGames", admin_js + admin_template)
+        self.assertIn("gameFacultyOptions", admin_js + admin_template)
+        self.assertIn("gameGroupOptions", admin_js + admin_template)
+        self.assertIn("showGameFilters", admin_js + admin_template)
+        self.assertIn("gameStatusOptions", admin_js + admin_template)
+        self.assertIn("resetGameFilters()", admin_js + admin_template)
+        self.assertIn("syncGameGroupFilters()", admin_js + admin_template)
+        self.assertIn('x-for="game in filteredGames"', admin_template)
+        self.assertNotIn("gameTeamOptions", admin_js + admin_template)
+        self.assertNotIn("gameConfigOptions", admin_js + admin_template)
 
         delete_entity_start = admin_js.index("async deleteEntity()")
         delete_entity_body = admin_js[delete_entity_start : admin_js.index("openUploadDocModal", delete_entity_start)]
@@ -2333,7 +2376,8 @@ class FrontendAssetTests(TestCase):
         docs_template = self.read_text("frontend/templates/game/docs.html")
 
         for expected_token in (
-            "API.get('/games/decision-structure/')",
+            "API.get(`/games/decision-structure/${gameQuery}`)",
+            "API.get(`/games/interpolation-tables/${gameQuery}`)",
             "this.activeDoc = this.defaultActiveDoc()",
             "if (!this.ministerKey) return null",
             "return this.ministerDocs[0] || null",

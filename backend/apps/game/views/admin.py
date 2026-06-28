@@ -9,8 +9,9 @@
 
 from typing import Any, cast
 
+import yaml
 from django.conf import settings
-from django.http import FileResponse
+from django.http import FileResponse, HttpResponse
 from django.shortcuts import render
 from django.templatetags.static import static
 from django.utils.decorators import method_decorator
@@ -22,11 +23,29 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.management.models import Team
+from apps.management.models import Group, Team
 
-from ..engine import get_state_manager
-from ..engine.calculator import get_calculator
-from ..models import Document, Game
+from ..configuration import (
+    CONFIG_FILENAMES,
+    CONFIG_LABELS,
+    apply_runtime_settings,
+    bump_or_create_config,
+    get_active_config_contents,
+    get_calculator_for_game,
+    get_config_label,
+    get_state_manager_for_game,
+    settings_payload,
+)
+from ..engine.validator import FormulaValidator
+from ..exports import build_group_results_xlsx
+from ..models import (
+    ConfigFile,
+    Document,
+    Game,
+    GamePeriod,
+    GlobalGameSettings,
+    read_builtin_config_file,
+)
 from ..player_documents import PLAYER_DOCUMENT_SLOT_BY_ID, PLAYER_DOCUMENT_SLOTS
 from ..serializers import (
     AdminLoginSerializer,
@@ -225,7 +244,12 @@ class TeamGameView(APIView):
             )
 
         provided_password = str(request.data.get("password", ""))
-        if team.access_password and not team.check_access_password(provided_password):
+        game_settings = GlobalGameSettings.get_solo()
+        if (
+            game_settings.use_team_passwords
+            and team.access_password
+            and not team.check_access_password(provided_password)
+        ):
             return Response(
                 {"error": "Неверный пароль команды"},
                 status=status.HTTP_403_FORBIDDEN,
@@ -395,6 +419,398 @@ class DocumentDeleteView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+def _admin_required(request: Request) -> Response | None:
+    if not request.session.get("is_admin", False):
+        return Response(
+            {"error": "Требуются права администратора"},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    return None
+
+
+def _line_for_token(content: str, token: str) -> int | None:
+    if not token:
+        return None
+    for index, line in enumerate(content.splitlines(), start=1):
+        if token in line:
+            return index
+    return None
+
+
+def _validation_item(
+    filename: str,
+    message: str,
+    *,
+    line: int | None = None,
+    severity: str = "error",
+) -> dict[str, Any]:
+    return {
+        "filename": filename,
+        "line": line,
+        "message": message,
+        "severity": severity,
+    }
+
+
+def _parse_config_contents(contents: dict[str, str]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    parsed = {}
+    errors = []
+    for filename in CONFIG_FILENAMES:
+        content = contents.get(filename, "")
+        try:
+            parsed[filename] = yaml.safe_load(content) or {}
+        except yaml.YAMLError as exc:
+            line = None
+            mark = getattr(exc, "problem_mark", None)
+            if mark is not None:
+                line = int(mark.line) + 1
+            errors.append(
+                _validation_item(filename, f"YAML не читается: {exc}", line=line)
+            )
+    return parsed, errors
+
+
+def validate_config_contents(contents: dict[str, str]) -> dict[str, Any]:
+    parsed, errors = _parse_config_contents(contents)
+    warnings = []
+    if errors:
+        return {"valid": False, "errors": errors, "warnings": warnings}
+
+    parameters_root = parsed.get("parameters.yaml") or {}
+    formulas_root = parsed.get("formulas.yaml") or {}
+    decision_order = parsed.get("decision_order.yaml") or {}
+    interpolation = parsed.get("interpolation.yaml") or {}
+    difficulties = parsed.get("difficulties.yaml") or {}
+
+    parameter_names = set()
+    if not isinstance(parameters_root, dict):
+        errors.append(_validation_item("parameters.yaml", "Корень файла должен быть словарём категорий."))
+    else:
+        for category_name, category in parameters_root.items():
+            if not isinstance(category, dict):
+                errors.append(
+                    _validation_item(
+                        "parameters.yaml",
+                        f"Категория {category_name} должна быть словарём параметров.",
+                        line=_line_for_token(contents["parameters.yaml"], str(category_name)),
+                    )
+                )
+                continue
+            for param_name, config in category.items():
+                parameter_names.add(param_name)
+                if not hasattr(GamePeriod, param_name):
+                    errors.append(
+                        _validation_item(
+                            "parameters.yaml",
+                            f"Для параметра {param_name} нет поля в GamePeriod.",
+                            line=_line_for_token(contents["parameters.yaml"], str(param_name)),
+                        )
+                    )
+                if not isinstance(config, dict):
+                    errors.append(
+                        _validation_item(
+                            "parameters.yaml",
+                            f"Параметр {param_name} должен быть словарём.",
+                            line=_line_for_token(contents["parameters.yaml"], str(param_name)),
+                        )
+                    )
+                    continue
+                for required_key in ("default", "verbose_name"):
+                    if required_key not in config:
+                        errors.append(
+                            _validation_item(
+                                "parameters.yaml",
+                                f"У параметра {param_name} нет обязательного поля {required_key}.",
+                                line=_line_for_token(contents["parameters.yaml"], str(param_name)),
+                            )
+                        )
+
+    if isinstance(decision_order, dict):
+        calculation_order = decision_order.get("calculation_order", [])
+        if not isinstance(calculation_order, list):
+            errors.append(_validation_item("decision_order.yaml", "calculation_order должен быть списком."))
+        else:
+            for section_name in calculation_order:
+                if section_name not in formulas_root:
+                    errors.append(
+                        _validation_item(
+                            "decision_order.yaml",
+                            f"calculation_order ссылается на отсутствующую секцию formulas.yaml: {section_name}.",
+                            line=_line_for_token(contents["decision_order.yaml"], str(section_name)),
+                        )
+                    )
+
+        for stage_key, stage in decision_order.items():
+            if not isinstance(stage, dict) or "order" not in stage:
+                continue
+            for input_config in stage.get("inputs", []):
+                param_name = input_config.get("param") if isinstance(input_config, dict) else None
+                if param_name and param_name not in parameter_names:
+                    errors.append(
+                        _validation_item(
+                            "decision_order.yaml",
+                            f"Этап {stage_key} использует неизвестный параметр {param_name}.",
+                            line=_line_for_token(contents["decision_order.yaml"], str(param_name)),
+                        )
+                    )
+            for auto_config in stage.get("auto_calculated", []):
+                param_name = auto_config.get("param") if isinstance(auto_config, dict) else None
+                if param_name and param_name not in parameter_names:
+                    errors.append(
+                        _validation_item(
+                            "decision_order.yaml",
+                            f"Этап {stage_key} авторассчитывает неизвестный параметр {param_name}.",
+                            line=_line_for_token(contents["decision_order.yaml"], str(param_name)),
+                        )
+                    )
+    else:
+        errors.append(_validation_item("decision_order.yaml", "Корень файла должен быть словарём."))
+
+    if isinstance(formulas_root, dict):
+        for section_name, section in formulas_root.items():
+            if not isinstance(section, dict):
+                continue
+            for param_name in section:
+                if param_name not in parameter_names:
+                    errors.append(
+                        _validation_item(
+                            "formulas.yaml",
+                            f"Формула {section_name}.{param_name} записывает неизвестный параметр {param_name}.",
+                            line=_line_for_token(contents["formulas.yaml"], str(param_name)),
+                        )
+                    )
+    else:
+        errors.append(_validation_item("formulas.yaml", "Корень файла должен быть словарём секций."))
+
+    if isinstance(interpolation, dict):
+        for table_name, table in interpolation.items():
+            if not isinstance(table, dict):
+                errors.append(
+                    _validation_item(
+                        "interpolation.yaml",
+                        f"Таблица {table_name} должна быть словарём.",
+                        line=_line_for_token(contents["interpolation.yaml"], str(table_name)),
+                    )
+                )
+                continue
+            x_values = table.get("x", [])
+            y_values = table.get("y", [])
+            if not isinstance(x_values, list) or not isinstance(y_values, list) or not x_values or not y_values:
+                errors.append(
+                    _validation_item(
+                        "interpolation.yaml",
+                        f"У таблицы {table_name} должны быть непустые списки x и y.",
+                        line=_line_for_token(contents["interpolation.yaml"], str(table_name)),
+                    )
+                )
+            elif len(x_values) != len(y_values):
+                errors.append(
+                    _validation_item(
+                        "interpolation.yaml",
+                        f"У таблицы {table_name} разная длина x и y.",
+                        line=_line_for_token(contents["interpolation.yaml"], str(table_name)),
+                    )
+                )
+    else:
+        errors.append(_validation_item("interpolation.yaml", "Корень файла должен быть словарём таблиц."))
+
+    if isinstance(difficulties, dict):
+        for profile_name, profile in difficulties.items():
+            if not isinstance(profile, dict):
+                errors.append(
+                    _validation_item(
+                        "difficulties.yaml",
+                        f"Профиль {profile_name} должен быть словарём.",
+                        line=_line_for_token(contents["difficulties.yaml"], str(profile_name)),
+                    )
+                )
+                continue
+            overrides = profile.get("overrides", {})
+            if isinstance(overrides, dict):
+                for param_name in overrides:
+                    if param_name not in parameter_names:
+                        errors.append(
+                            _validation_item(
+                                "difficulties.yaml",
+                                f"Профиль {profile_name} переопределяет неизвестный параметр {param_name}.",
+                                line=_line_for_token(contents["difficulties.yaml"], str(param_name)),
+                            )
+                        )
+    else:
+        errors.append(_validation_item("difficulties.yaml", "Корень файла должен быть словарём профилей."))
+
+    runtime_config = apply_runtime_settings(parsed, settings_payload(GlobalGameSettings.get_solo()))
+    formula_validator = FormulaValidator(config_data=runtime_config)
+    formula_errors, formula_warnings = formula_validator.validate_all()
+    cycles = formula_validator.check_circular_dependencies()
+    for message in formula_errors:
+        filename = "formulas.yaml" if message.startswith("formulas.yaml") else "parameters.yaml"
+        errors.append(
+            _validation_item(
+                filename,
+                message,
+                line=_line_for_token(contents[filename], message.split("'")[-2] if "'" in message else ""),
+            )
+        )
+    for message in formula_warnings:
+        filename = "formulas.yaml" if message.startswith("formulas.yaml") else "interpolation.yaml"
+        warnings.append(
+            _validation_item(filename, message, severity="warning")
+        )
+    for cycle in cycles:
+        warnings.append(
+            _validation_item(
+                "formulas.yaml",
+                f"Возможная циклическая зависимость формул: {cycle}.",
+                severity="warning",
+            )
+        )
+
+    return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings}
+
+
+def _config_payload(config_file: ConfigFile | None, filename: str) -> dict[str, Any]:
+    builtin_content = read_builtin_config_file(filename)
+    content = config_file.content if config_file is not None else builtin_content
+    return {
+        "filename": filename,
+        "title": CONFIG_LABELS.get(filename, filename),
+        "content": content,
+        "builtin_content": builtin_content,
+        "is_modified": config_file is not None,
+        "version": config_file.version if config_file is not None else 0,
+        "updated_at": config_file.updated_at.isoformat() if config_file is not None else None,
+    }
+
+
+class ConfigFilesView(APIView):
+    """GET /api/admin/config-files/"""
+
+    def get(self, request: Request) -> Response:
+        denied = _admin_required(request)
+        if denied is not None:
+            return denied
+        overrides = {cfg.filename: cfg for cfg in ConfigFile.objects.all()}
+        return Response(
+            {
+                "files": [
+                    {
+                        **_config_payload(overrides.get(filename), filename),
+                        "content": None,
+                        "builtin_content": None,
+                    }
+                    for filename in CONFIG_FILENAMES
+                ],
+                "label": get_config_label(),
+            }
+        )
+
+
+class ConfigFileDetailView(APIView):
+    """GET/PATCH /api/admin/config-files/{filename}/"""
+
+    def get(self, request: Request, filename: str) -> Response:
+        denied = _admin_required(request)
+        if denied is not None:
+            return denied
+        if filename not in CONFIG_FILENAMES:
+            return Response({"error": "Неизвестный конфигурационный файл"}, status=status.HTTP_404_NOT_FOUND)
+        config_file = ConfigFile.objects.filter(filename=filename).first()
+        return Response(_config_payload(config_file, filename))
+
+    def patch(self, request: Request, filename: str) -> Response:
+        denied = _admin_required(request)
+        if denied is not None:
+            return denied
+        if filename not in CONFIG_FILENAMES:
+            return Response({"error": "Неизвестный конфигурационный файл"}, status=status.HTTP_404_NOT_FOUND)
+        content = str(request.data.get("content", ""))
+        contents = get_active_config_contents()
+        contents[filename] = content
+        validation = validate_config_contents(contents)
+        if not validation["valid"]:
+            return Response(validation, status=status.HTTP_400_BAD_REQUEST)
+        config_file = bump_or_create_config(filename, content)
+        return Response({**_config_payload(config_file, filename), "validation": validation})
+
+
+class ConfigFileValidateView(APIView):
+    """POST /api/admin/config-files/{filename}/validate/"""
+
+    def post(self, request: Request, filename: str) -> Response:
+        denied = _admin_required(request)
+        if denied is not None:
+            return denied
+        if filename not in CONFIG_FILENAMES:
+            return Response({"error": "Неизвестный конфигурационный файл"}, status=status.HTTP_404_NOT_FOUND)
+        contents = get_active_config_contents()
+        contents[filename] = str(request.data.get("content", ""))
+        return Response(validate_config_contents(contents))
+
+
+class ConfigFileResetView(APIView):
+    """POST /api/admin/config-files/{filename}/reset/"""
+
+    def post(self, request: Request, filename: str) -> Response:
+        denied = _admin_required(request)
+        if denied is not None:
+            return denied
+        if filename not in CONFIG_FILENAMES:
+            return Response({"error": "Неизвестный конфигурационный файл"}, status=status.HTTP_404_NOT_FOUND)
+        ConfigFile.objects.filter(filename=filename).delete()
+        config_file = ConfigFile.objects.filter(filename=filename).first()
+        return Response(_config_payload(config_file, filename))
+
+
+class GlobalSettingsView(APIView):
+    """GET/PATCH /api/admin/settings/"""
+
+    def get(self, request: Request) -> Response:
+        denied = _admin_required(request)
+        if denied is not None:
+            return denied
+        return Response(settings_payload(GlobalGameSettings.get_solo()))
+
+    def patch(self, request: Request) -> Response:
+        denied = _admin_required(request)
+        if denied is not None:
+            return denied
+        settings_obj = GlobalGameSettings.get_solo()
+        for field in (
+            "use_team_passwords",
+            "auto_calculate_decision_residuals",
+            "parallel_decision_mode",
+        ):
+            if field in request.data:
+                setattr(settings_obj, field, bool(request.data[field]))
+        settings_obj.save()
+        return Response(settings_payload(settings_obj))
+
+
+class GroupGamesExcelExportView(APIView):
+    """GET /api/groups/{group_id}/export/excel/"""
+
+    def get(self, request: Request, group_id: int) -> HttpResponse | Response:
+        denied = _admin_required(request)
+        if denied is not None:
+            return denied
+        try:
+            group = Group.objects.select_related("faculty").get(pk=group_id)
+        except Group.DoesNotExist:
+            return Response(
+                {"error": "Группа не найдена"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        filename = f"strategem-group-{group.id}-games.xlsx"
+        response = HttpResponse(
+            build_group_results_xlsx(group),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = f"attachment; filename={filename}"
+        return response
+
+
 class CalculatorStateView(APIView):
     """GET /api/admin/calculator/{game_id}/state/
     Возвращает полное состояние игры для калькулятора."""
@@ -408,7 +824,7 @@ class CalculatorStateView(APIView):
         except Game.DoesNotExist:
             return Response({"error": "Игра не найдена"}, status=404)
 
-        calculator = get_calculator()
+        calculator = get_calculator_for_game(game)
         periods_data = []
 
         all_periods = list(game.periods.order_by("period_number"))
@@ -432,7 +848,7 @@ class CalculatorStateView(APIView):
         interp_tables = calculator.get_interpolation_tables()
 
         # Список input-параметров
-        input_params = get_state_manager().get_all_input_params()
+        input_params = get_state_manager_for_game(game).get_all_input_params()
 
         # Все параметры с названиями
         param_config = calculator.get_parameters_config()
@@ -464,7 +880,7 @@ class CalculatorCalcView(APIView):
         input_values = request.data.get("parameters", {})
 
         # Проверка заполненности
-        required = get_state_manager().get_all_input_params()
+        required = get_state_manager_for_game(game).get_all_input_params()
         missing = [
             p for p in required
             if p not in input_values or input_values[p] is None
@@ -487,8 +903,8 @@ class CalculatorCalcView(APIView):
         for k, v in input_values.items():
             params[k] = float(v)
 
-        calculator = get_calculator()
-        state_manager = get_state_manager()
+        calculator = get_calculator_for_game(game)
+        state_manager = get_state_manager_for_game(game)
         fixed_formula_params = []
         for param_name in calculator.get_decision_parameter_names():
             if not calculator.is_fixed_parameter(param_name):
@@ -582,7 +998,7 @@ class CalculatorResetView(APIView):
         # если старый reset уже успел удалить все периоды.
         game.periods.filter(period_number__gt=1).delete()
         initial_period = game.periods.filter(period_number=1).first()
-        initial_params = get_calculator().get_initial_parameters(game.difficulty)
+        initial_params = get_calculator_for_game(game).get_initial_parameters(game.difficulty)
         if initial_period is None:
             initial_period = game.periods.create(period_number=1)
             initial_period.set_parameters(initial_params)

@@ -12,7 +12,7 @@ from typing import Any
 import yaml
 from simpleeval import SimpleEval
 
-from .interpolation import get_interpolator
+from .interpolation import Interpolator, get_interpolator
 
 logger = logging.getLogger(__name__)
 
@@ -25,13 +25,15 @@ class GameCalculator:
     для вычисления параметров и перехода между периодами
     """
 
-    def __init__(self):
+    def __init__(self, config_data: dict[str, Any] | None = None):
         self._formulas: dict = {}
         self._decision_order: dict = {}
         self._parameters_config: dict = {}
         self._initial_profiles: dict = {}
         self._resolved_profile_configs: dict[str, dict[str, Any]] = {}
-        self._interpolator = get_interpolator()
+        self._config_data = config_data
+        tables = config_data.get("interpolation.yaml") if config_data else None
+        self._interpolator = Interpolator(tables=tables) if tables is not None else get_interpolator()
         self._load_config()
 
     def _load_config(self) -> None:
@@ -42,6 +44,16 @@ class GameCalculator:
         self._parameters_config = {}
         self._initial_profiles = {}
         self._resolved_profile_configs = {}
+
+        if self._config_data is not None:
+            self._formulas = self._config_data.get("formulas.yaml") or {}
+            self._decision_order = self._config_data.get("decision_order.yaml") or {}
+            params_data = self._config_data.get("parameters.yaml") or {}
+            for category in params_data.values():
+                if isinstance(category, dict):
+                    self._parameters_config.update(category)
+            self._initial_profiles = self._config_data.get("difficulties.yaml") or {}
+            return
 
         # Загружаем формулы
         formulas_path = data_dir / "formulas.yaml"

@@ -94,7 +94,11 @@ class GameStateManager:
         "import": 3,
     }
 
-    def __init__(self, calculator: GameCalculator | None = None):
+    def __init__(
+        self,
+        calculator: GameCalculator | None = None,
+        config_data: dict[str, Any] | None = None,
+    ):
         """
         Инициализация менеджера состояния.
 
@@ -102,6 +106,7 @@ class GameStateManager:
             calculator: Калькулятор игры (или используется глобальный)
         """
         self._calculator = calculator or get_calculator()
+        self._config_data = config_data
         self._decision_order: dict = {}
         self._parameters_config: dict = {}
         self._load_config()
@@ -111,10 +116,13 @@ class GameStateManager:
         data_dir = Path(__file__).parent.parent / "data"
 
         # Загружаем порядок решений
-        order_path = data_dir / "decision_order.yaml"
-        if order_path.exists():
-            with open(order_path, "r", encoding="utf-8") as f:
-                self._decision_order = yaml.safe_load(f) or {}
+        if self._config_data is not None:
+            self._decision_order = self._config_data.get("decision_order.yaml") or {}
+        else:
+            order_path = data_dir / "decision_order.yaml"
+            if order_path.exists():
+                with open(order_path, "r", encoding="utf-8") as f:
+                    self._decision_order = yaml.safe_load(f) or {}
 
         # Читаем флаг параллельного режима
         self.parallel_mode: bool = bool(self._decision_order.get("parallel_mode", False))
@@ -123,17 +131,21 @@ class GameStateManager:
         )
 
         # Загружаем конфигурацию параметров
-        params_path = data_dir / "parameters.yaml"
-        if params_path.exists():
-            with open(params_path, "r", encoding="utf-8") as f:
-                params_data = yaml.safe_load(f) or {}
-                for category_name, category in params_data.items():
-                    if isinstance(category, dict):
-                        for param_name, param_config in category.items():
-                            if isinstance(param_config, dict):
-                                param_config["category"] = category_name
-                            self._parameters_config[param_name] = param_config
-
+        params_data = None
+        if self._config_data is not None:
+            params_data = self._config_data.get("parameters.yaml") or {}
+        else:
+            params_path = data_dir / "parameters.yaml"
+            if params_path.exists():
+                with open(params_path, "r", encoding="utf-8") as f:
+                    params_data = yaml.safe_load(f) or {}
+        if params_data:
+            for category_name, category in params_data.items():
+                if isinstance(category, dict):
+                    for param_name, param_config in category.items():
+                        if isinstance(param_config, dict):
+                            param_config["category"] = category_name
+                        self._parameters_config[param_name] = param_config
     def _iter_decision_stages(self):
         """Итерирует только по этапам решений из decision_order."""
         for stage_key, stage_config in self._decision_order.items():

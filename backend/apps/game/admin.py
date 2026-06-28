@@ -2,7 +2,7 @@
 
 from django.contrib import admin
 
-from .models import Game, GamePeriod
+from .models import ConfigFile, Game, GamePeriod, GlobalGameSettings
 
 
 class GamePeriodInline(admin.TabularInline):
@@ -135,3 +135,22 @@ class GamePeriodAdmin(admin.ModelAdmin):
             },
         ),
     )
+
+
+@admin.register(ConfigFile)
+class ConfigFileAdmin(admin.ModelAdmin):
+    list_display = ["filename", "version", "updated_at"]
+    search_fields = ["filename", "content"]
+    readonly_fields = ["version", "updated_at"]
+
+
+@admin.register(GlobalGameSettings)
+class GlobalGameSettingsAdmin(admin.ModelAdmin):
+    list_display = [
+        "id",
+        "use_team_passwords",
+        "auto_calculate_decision_residuals",
+        "parallel_decision_mode",
+        "updated_at",
+    ]
+    readonly_fields = ["updated_at"]

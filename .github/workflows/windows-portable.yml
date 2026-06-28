@@ -7,6 +7,14 @@ on:
         description: "Release tag for the Windows package, for example windows-portable-2026-06-08"
         required: true
         type: string
+      changelog:
+        description: "Release changelog text. If empty, CHANGELOG.md is used when present."
+        required: false
+        type: string
+      release_title:
+        description: "Release title. If empty, a title is derived from the release tag."
+        required: false
+        type: string
   push:
     tags:
       - "v*"
@@ -59,10 +67,6 @@ jobs:
           if (-not (Test-Path .\dist\Strategem-Windows\data)) { throw "data directory was not created" }
           if (-not (Test-Path .\dist\Strategem-Windows\media)) { throw "media directory was not created" }
 
-      - name: Archive portable package
-        shell: pwsh
-        run: Compress-Archive -Path .\dist\Strategem-Windows\* -DestinationPath .\dist\Strategem-Windows.zip -Force
-
       - name: Resolve release tag
         shell: pwsh
         run: |
@@ -74,14 +78,45 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($tag)) { throw "Release tag is required" }
           "RELEASE_TAG=$tag" >> $env:GITHUB_ENV
 
+      - name: Resolve release changelog
+        shell: pwsh
+        run: |
+          $notesPath = ".\dist\release-notes.md"
+          $inputNotes = "${{ inputs.changelog }}"
+          if (-not [string]::IsNullOrWhiteSpace($inputNotes)) {
+            $inputNotes | Set-Content -Path $notesPath -Encoding UTF8
+          } elseif (Test-Path .\CHANGELOG.md) {
+            Copy-Item .\CHANGELOG.md $notesPath -Force
+          } else {
+            "Offline Windows executable build for Strategem." | Set-Content -Path $notesPath -Encoding UTF8
+          }
+          "RELEASE_NOTES=$notesPath" >> $env:GITHUB_ENV
+
+      - name: Resolve release title
+        shell: pwsh
+        run: |
+          $title = "${{ inputs.release_title }}"
+          if ([string]::IsNullOrWhiteSpace($title)) {
+            if ($env:RELEASE_TAG -match '^v([0-9]+)\.([0-9]+)\.0\+([0-9]{8})$') {
+              $title = "Strategem v$($Matches[1]).$($Matches[2]) ($($Matches[3]))"
+            } elseif ($env:RELEASE_TAG -match '^v([0-9]+)\.([0-9]+)\.([0-9]+)\+([0-9]{8})$') {
+              $title = "Strategem v$($Matches[1]).$($Matches[2]).$($Matches[3]) ($($Matches[4]))"
+            } else {
+              $title = "Strategem Windows $env:RELEASE_TAG"
+            }
+          }
+          "RELEASE_TITLE=$title" >> $env:GITHUB_ENV
+
       - name: Publish GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $asset = ".\dist\Strategem-Windows.zip"
+          $asset = ".\dist\Strategem-Windows\Strategem.exe"
           gh release view $env:RELEASE_TAG *> $null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $env:RELEASE_TAG --title "Strategem Windows $env:RELEASE_TAG" --notes "Offline Windows portable build for Strategem."
+            gh release create $env:RELEASE_TAG --title "$env:RELEASE_TITLE" --notes-file $env:RELEASE_NOTES
+          } else {
+            gh release edit $env:RELEASE_TAG --title "$env:RELEASE_TITLE" --notes-file $env:RELEASE_NOTES
           }
           gh release upload $env:RELEASE_TAG $asset --clobber
