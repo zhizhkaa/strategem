@@ -12,7 +12,7 @@ $stagingPath = Join-Path $workPath "app"
 $venvPath = Join-Path $workPath "venv"
 $pythonExe = Join-Path $venvPath "Scripts\python.exe"
 $pyinstallerDistPath = Join-Path $workPath "dist"
-$pyinstallerOutputPath = Join-Path $pyinstallerDistPath "Strategem"
+$pyinstallerOutputPath = Join-Path $pyinstallerDistPath "Strategem.exe"
 $appExe = Join-Path $outputPath "Strategem.exe"
 
 Write-Host "Building Strategem executable package in $outputPath"
@@ -58,7 +58,7 @@ Write-Host "Running PyInstaller..."
 & $pythonExe -m PyInstaller `
     --noconfirm `
     --clean `
-    --onedir `
+    --onefile `
     --console `
     --name Strategem `
     --distpath $pyinstallerDistPath `
@@ -83,18 +83,15 @@ Write-Host "Running PyInstaller..."
     (Join-Path $repoRoot "scripts\windows\strategem_launcher.py")
 
 if (-not (Test-Path $pyinstallerOutputPath)) {
-    throw "PyInstaller did not create package directory at $pyinstallerOutputPath"
+    throw "PyInstaller did not create executable at $pyinstallerOutputPath"
 }
 
 New-Item -ItemType Directory -Force (Split-Path -Parent $outputPath) | Out-Null
-Move-Item -Force $pyinstallerOutputPath $outputPath
+New-Item -ItemType Directory -Force $outputPath | Out-Null
+Move-Item -Force $pyinstallerOutputPath $appExe
 
 if (-not (Test-Path $appExe)) {
     throw "PyInstaller did not create Strategem.exe at $appExe"
 }
 
-New-Item -ItemType Directory -Force (Join-Path $outputPath "data") | Out-Null
-New-Item -ItemType Directory -Force (Join-Path $outputPath "media") | Out-Null
-
-Write-Host "Portable executable package is ready: $outputPath"
-Write-Host "Run Strategem.exe from that folder."
+Write-Host "Portable executable is ready: $appExe"

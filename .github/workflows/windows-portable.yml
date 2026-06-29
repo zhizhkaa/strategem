@@ -64,8 +64,8 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path .\dist\Strategem-Windows\Strategem.exe)) { throw "Strategem.exe was not created" }
-          if (-not (Test-Path .\dist\Strategem-Windows\data)) { throw "data directory was not created" }
-          if (-not (Test-Path .\dist\Strategem-Windows\media)) { throw "media directory was not created" }
+          $unexpectedFiles = Get-ChildItem .\dist\Strategem-Windows -Force | Where-Object { $_.Name -ne "Strategem.exe" }
+          if ($unexpectedFiles) { throw "Single-file release directory contains unexpected files: $($unexpectedFiles.Name -join ', ')" }
 
       - name: Resolve release tag
         shell: pwsh

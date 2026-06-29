@@ -19,11 +19,12 @@ def load_windows_launcher():
     return launcher
 
 
-def test_windows_build_creates_pyinstaller_exe_package() -> None:
+def test_windows_build_creates_single_pyinstaller_exe() -> None:
     script = read_repo_file("scripts/windows/build-portable.ps1")
 
     assert "PyInstaller" in script
-    assert "--onedir" in script
+    assert "--onefile" in script
+    assert "--onedir" not in script
     assert "--name" in script
     assert "Strategem" in script
     assert "Strategem.exe" in script
@@ -62,6 +63,7 @@ def test_windows_workflow_builds_exe_artifact() -> None:
     assert "requirements-windows-build.txt" in workflow
     assert "Strategem.exe" in workflow
     assert "Strategem-Windows.zip" not in workflow
+    assert "unexpected files" in workflow
     assert "changelog:" in workflow
     assert "release_title:" in workflow
     assert "RELEASE_TITLE" in workflow
