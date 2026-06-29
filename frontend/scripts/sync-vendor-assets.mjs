@@ -5,27 +5,27 @@ const vendorFiles = [
     {
         packageName: "alpinejs",
         source: "node_modules/alpinejs/dist/cdn.min.js",
-        target: "frontend/static/vendor/alpinejs/alpine.min.js",
+        target: "static/vendor/alpinejs/alpine.min.js",
     },
     {
         packageName: "chart.js",
         source: "node_modules/chart.js/dist/chart.umd.min.js",
-        target: "frontend/static/vendor/chartjs/chart.umd.min.js",
+        target: "static/vendor/chartjs/chart.umd.min.js",
     },
     {
         packageName: "pdfjs-dist",
         source: "node_modules/pdfjs-dist/build/pdf.min.mjs",
-        target: "frontend/static/vendor/pdfjs/pdf.min.mjs",
+        target: "static/vendor/pdfjs/pdf.min.mjs",
     },
     {
         packageName: "pdfjs-dist",
         source: "node_modules/pdfjs-dist/build/pdf.worker.min.mjs",
-        target: "frontend/static/vendor/pdfjs/pdf.worker.min.mjs",
+        target: "static/vendor/pdfjs/pdf.worker.min.mjs",
     },
     {
         packageName: "pdfjs-dist",
         source: "node_modules/pdfjs-dist/build/pdf.sandbox.min.mjs",
-        target: "frontend/static/vendor/pdfjs/pdf.sandbox.min.mjs",
+        target: "static/vendor/pdfjs/pdf.sandbox.min.mjs",
     },
 ];
 
@@ -33,17 +33,21 @@ const vendorDirectories = [
     {
         packageName: "pdfjs-dist",
         source: "node_modules/pdfjs-dist/cmaps",
-        target: "frontend/static/vendor/pdfjs/cmaps",
+        target: "static/vendor/pdfjs/cmaps",
     },
     {
         packageName: "pdfjs-dist",
         source: "node_modules/pdfjs-dist/standard_fonts",
-        target: "frontend/static/vendor/pdfjs/standard_fonts",
+        target: "static/vendor/pdfjs/standard_fonts",
     },
 ];
 
 const lockfile = JSON.parse(readFileSync("package-lock.json", "utf8"));
 const versions = [];
+const normalizedTextFiles = [
+    "static/vendor/pdfjs/cmaps/LICENSE",
+    "static/vendor/pdfjs/standard_fonts/LICENSE_LIBERATION",
+];
 
 function addPackageVersion(packageName) {
     const packageInfo = lockfile.packages[`node_modules/${packageName}`];
@@ -67,4 +71,13 @@ for (const directory of vendorDirectories) {
     addPackageVersion(directory.packageName);
 }
 
-writeFileSync("frontend/static/vendor/VERSIONS.txt", `${versions.join("\n")}\n`, "utf8");
+for (const filePath of normalizedTextFiles) {
+    const content = readFileSync(filePath, "utf8")
+        .split(/\r?\n/)
+        .map((line) => line.trimEnd())
+        .join("\n")
+        .replace(/\n*$/, "\n");
+    writeFileSync(filePath, content, "utf8");
+}
+
+writeFileSync("static/vendor/VERSIONS.txt", `${versions.join("\n")}\n`, "utf8");

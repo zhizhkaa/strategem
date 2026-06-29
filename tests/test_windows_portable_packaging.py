@@ -60,7 +60,8 @@ def test_windows_workflow_builds_exe_artifact() -> None:
     assert "actions/setup-node@v4" not in workflow
     assert "actions/setup-python@v5" not in workflow
     assert "actions/setup-python" in workflow
-    assert "requirements-windows-build.txt" in workflow
+    assert "scripts/windows/requirements-build.txt" in workflow
+    assert "working-directory: frontend" in workflow
     assert "Strategem.exe" in workflow
     assert "Strategem-Windows.zip" not in workflow
     assert "unexpected files" in workflow
@@ -77,7 +78,7 @@ def test_deploy_workflow_ignores_windows_packaging_changes() -> None:
 
     assert "paths-ignore:" in workflow
     assert "scripts/windows/**" in workflow
-    assert "requirements-windows-build.txt" in workflow
+    assert "requirements-windows-build.txt" not in workflow
     assert ".github/workflows/windows-portable.yml" in workflow
     assert "git sparse-checkout init --no-cone" in workflow
     assert "/backend/" in workflow

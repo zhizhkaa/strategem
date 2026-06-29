@@ -1,7 +1,7 @@
 {
   "scripts": {
     "build": "npm run vendor:js && npm run build:css",
-    "build:css": "tailwindcss -i ./frontend/styles/tailwind.css -o ./frontend/static/css/tailwind.css --minify",
+    "build:css": "tailwindcss -i ./styles/tailwind.css -o ./static/css/tailwind.css --minify",
     "vendor:js": "node scripts/sync-vendor-assets.mjs"
   },
   "dependencies": {

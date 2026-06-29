@@ -26,7 +26,7 @@ $requiredAssets = @(
 foreach ($asset in $requiredAssets) {
     $assetPath = Join-Path $repoRoot $asset
     if (-not (Test-Path $assetPath)) {
-        throw "Missing frontend asset: $asset. Run npm ci and npm run build before packaging."
+        throw "Missing frontend asset: $asset. Run npm ci and npm run build in frontend before packaging."
     }
 }
 
@@ -52,7 +52,7 @@ python -m venv $venvPath
 Write-Host "Installing application and packaging dependencies..."
 & $pythonExe -m pip install --upgrade pip
 & $pythonExe -m pip install -r (Join-Path $repoRoot "requirements.txt")
-& $pythonExe -m pip install -r (Join-Path $repoRoot "requirements-windows-build.txt")
+& $pythonExe -m pip install -r (Join-Path $repoRoot "scripts\windows\requirements-build.txt")
 
 Write-Host "Running PyInstaller..."
 & $pythonExe -m PyInstaller `
