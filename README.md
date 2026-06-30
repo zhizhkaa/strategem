@@ -29,6 +29,12 @@
 
 ## Быстрый старт
 
+Склонируйте репозиторий:
+
+```bash
+git clone https://github.com/zhizhkaa/strategem.git
+```
+
 Создайте виртуальное окружение:
 
 ```bash
