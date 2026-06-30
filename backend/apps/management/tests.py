@@ -1,118 +1,58 @@
-"""
-Тесты для приложения management
-Cодержит тесты для моделей и API
-
-Модели:
-- Faculty: создание факультета и проверка валидаци
-- Group: создание группы и проверка валидации (привязка к году)
-- Team: создание команды и проверка валидации (привязка к группе)
-
-API тесты:
-- test_faculty_api:
-    - POST создание факультета
-    - GET получение списка факультетов
-- test_group_api:
-    - POST создание группы с привязкой к факультету
-- test_team_api:
-    - POST создание команды с привязкой к группе
-"""
-
-from apps.management.models import Faculty, Group, Team
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-
-class FacultyTest(TestCase):
-    """Checks faculty model creation and string representation."""
-
-    faculty_name = "ИТ"
-
-    def setUp(self):
-        self.faculty = Faculty.objects.create(name=self.faculty_name)
-
-    def test_create_faculty(self):
-        self.assertEqual(self.faculty.name, self.faculty_name)
-
-    def test_faculty_str(self):
-        self.assertEqual(str(self.faculty), self.faculty_name)
+from .models import Faculty, Group, Team
 
 
-class GroupTest(TestCase):
-    """Checks group model creation and string representation."""
+class ManagementModelTests(TestCase):
+    def test_faculty_group_and_team_have_readable_names(self):
+        faculty = Faculty.objects.create(name="Экономический факультет")
+        group = Group.objects.create(name="ЭК-01", faculty=faculty, year=2026)
+        team = Team.objects.create(name="Команда 1", group=group)
 
-    faculty_name = "ИТ"
-    group_name = "ИМК-101"
-    group_year = 2024
+        self.assertEqual(str(faculty), "Экономический факультет")
+        self.assertEqual(str(group), "ЭК-01 | 2026")
+        self.assertEqual(str(team), "Команда 1")
 
-    def setUp(self):
-        self.faculty = Faculty.objects.create(name=self.faculty_name)
-        self.group = Group.objects.create(
-            name=self.group_name, faculty=self.faculty, year=self.group_year
+    def test_team_password_is_hashed_and_checked(self):
+        faculty = Faculty.objects.create(name="Факультет")
+        group = Group.objects.create(name="Группа", faculty=faculty, year=2026)
+        team = Team.objects.create(name="Команда", group=group, access_password="secret123")
+
+        self.assertNotEqual(team.access_password, "secret123")
+        self.assertTrue(team.access_password_is_hashed())
+        self.assertTrue(team.check_access_password("secret123"))
+        self.assertFalse(team.check_access_password("wrong"))
+
+
+class ManagementApiTests(APITestCase):
+    def test_management_api_creates_and_lists_hierarchy(self):
+        faculty_response = self.client.post(
+            "/api/management/faculties/",
+            {"name": "Факультет"},
+            format="json",
         )
+        self.assertEqual(faculty_response.status_code, status.HTTP_201_CREATED)
 
-    def test_create_group(self):
-        self.assertEqual(self.group.name, self.group_name)
-        self.assertEqual(self.group.year, self.group_year)
-
-    def test_group_str(self):
-        self.assertEqual(str(self.group), f"{self.group_name} | {self.group_year}")
-
-
-class TeamTest(TestCase):
-    """Checks team model creation and string representation."""
-
-    faculty_name = "ИТ"
-    group_name = "ИМК-101"
-    group_year = 2024
-    team_name = "Команда A"
-
-    def setUp(self):
-        self.faculty = Faculty.objects.create(name=self.faculty_name)
-        self.group = Group.objects.create(
-            name=self.group_name, faculty=self.faculty, year=self.group_year
+        group_response = self.client.post(
+            "/api/management/groups/",
+            {
+                "name": "Группа",
+                "faculty": faculty_response.data["id"],
+                "year": 2026,
+            },
+            format="json",
         )
-        self.team = Team.objects.create(name=self.team_name, group=self.group)
+        self.assertEqual(group_response.status_code, status.HTTP_201_CREATED)
 
-    def test_create_team(self):
-        self.assertEqual(self.team.name, self.team_name)
-        self.assertEqual(self.team.group, self.group)
-
-    def test_team_str(self):
-        self.assertEqual(str(self.team), self.team_name)
-
-
-class APITest(APITestCase):
-    """Checks CRUD entrypoints for management resources."""
-
-    faculty_name = "ИТ"
-    group_name = "ИМК-101"
-    group_year = 2024
-    team_name = "Команда A"
-
-    def setUp(self):
-        session = self.client.session
-        session["is_admin"] = True
-        session.save()
-
-    def test_faculty_api(self):
-        response = self.client.post("/api/faculties/", {"name": self.faculty_name})
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-        response = self.client.get("/api/faculties/")
-        self.assertEqual(len(response.data), 1)
-
-    def test_group_api(self):
-        faculty = Faculty.objects.create(name=self.faculty_name)
-        data = {"name": self.group_name, "faculty": faculty.id, "year": self.group_year}
-        response = self.client.post("/api/groups/", data)
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-    def test_team_api(self):
-        faculty = Faculty.objects.create(name=self.faculty_name)
-        group = Group.objects.create(
-            name=self.group_name, faculty=faculty, year=self.group_year
+        team_response = self.client.post(
+            "/api/management/teams/",
+            {"name": "Команда", "group": group_response.data["id"]},
+            format="json",
         )
-        data = {"name": self.team_name, "group": group.id}
-        response = self.client.post("/api/teams/", data)
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(team_response.status_code, status.HTTP_201_CREATED)
+
+        list_response = self.client.get("/api/management/teams/")
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(list_response.data[0]["name"], "Команда")
